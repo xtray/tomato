@@ -1,8 +1,13 @@
 import SwiftUI
+import AppKit
 
 @main
 struct TomatoApp: App {
     @StateObject private var taskStore = TaskStore()
+
+    init() {
+        applyRuntimeAppIcon()
+    }
     
     var body: some Scene {
         WindowGroup {
@@ -38,6 +43,13 @@ struct TomatoApp: App {
                 }
                 .keyboardShortcut(",", modifiers: [.command])
             }
+        }
+    }
+
+    private func applyRuntimeAppIcon() {
+        if let iconPath = Bundle.main.path(forResource: "AppIcon", ofType: "icns"),
+           let icon = NSImage(contentsOfFile: iconPath) {
+            NSApplication.shared.applicationIconImage = icon
         }
     }
 }

@@ -4,6 +4,8 @@ import AppKit
 struct ContentView: View {
     @EnvironmentObject var taskStore: TaskStore
     @State private var newTaskTitle: String = ""
+    @State private var taskPendingDeletion: PomodoroTask?
+    @State private var showingDeleteConfirmation: Bool = false
     
     var body: some View {
         mainView
@@ -23,6 +25,17 @@ struct ContentView: View {
                         NSApp.activate(ignoringOtherApps: true)
                     }
                 }
+            }
+            .alert("删除任务？", isPresented: $showingDeleteConfirmation, presenting: taskPendingDeletion) { task in
+                Button("删除", role: .destructive) {
+                    taskStore.deleteTask(id: task.id)
+                    taskPendingDeletion = nil
+                }
+                Button("取消", role: .cancel) {
+                    taskPendingDeletion = nil
+                }
+            } message: { task in
+                Text("确认删除任务“\(task.title)”吗？此操作无法撤销。")
             }
     }
 
@@ -76,6 +89,18 @@ struct ContentView: View {
                     .tag(task)
                     .onTapGesture {
                         taskStore.selectTask(task)
+                    }
+                    .contextMenu {
+                        Button(task.isCompleted ? "标记为未完成" : "标记完成") {
+                            taskStore.selectTask(task)
+                            taskStore.toggleTaskCompletion(task)
+                        }
+
+                        Button("删除任务", role: .destructive) {
+                            taskStore.selectTask(task)
+                            taskPendingDeletion = task
+                            showingDeleteConfirmation = true
+                        }
                     }
                 }
                 .onDelete(perform: taskStore.deleteTask)

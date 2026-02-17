@@ -94,6 +94,11 @@ class TaskStore: ObservableObject {
         }
         saveTasks()
     }
+
+    func deleteTask(id: UUID) {
+        guard let index = tasks.firstIndex(where: { $0.id == id }) else { return }
+        deleteTask(at: IndexSet(integer: index))
+    }
     
     func selectTask(_ task: PomodoroTask?) {
         selectedTask = task
