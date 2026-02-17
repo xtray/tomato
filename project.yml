@@ -1,0 +1,30 @@
+name: Tomato
+options:
+  bundleIdPrefix: com.tomato
+  deploymentTarget:
+    macOS: "13.0"
+  xcodeVersion: "15.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+
+targets:
+  Tomato:
+    type: application
+    platform: macOS
+    sources:
+      - Tomato
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tomato.app
+        INFOPLIST_FILE: Tomato/Resources/Info.plist
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        DEVELOPMENT_TEAM: ""
+        PRODUCT_NAME: Tomato
+        COMBINE_HIDPI_IMAGES: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_HARDENED_RUNTIME: NO
+        CODE_SIGNING_ALLOWED: NO
