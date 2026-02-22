@@ -32,6 +32,11 @@ class TaskStore: ObservableObject {
     @Published var currentPhase: TimerPhase = .work
     @Published var showingFloatingWindow: Bool = false
     @Published var showingSettings: Bool = false
+    @Published var themeMode: ThemeMode {
+        didSet {
+            ThemePreferences.save(themeMode)
+        }
+    }
     
     @Published var workDuration: Int {
         didSet {
@@ -67,6 +72,7 @@ class TaskStore: ObservableObject {
         let savedWorkDuration = UserDefaults.standard.integer(forKey: "workDuration")
         let savedShortBreakDuration = UserDefaults.standard.integer(forKey: "shortBreakDuration")
         let savedLongBreakDuration = UserDefaults.standard.integer(forKey: "longBreakDuration")
+        self.themeMode = ThemePreferences.load()
         
         self.workDuration = savedWorkDuration > 0 ? savedWorkDuration : 25 * 60
         self.shortBreakDuration = savedShortBreakDuration > 0 ? savedShortBreakDuration : 5 * 60
