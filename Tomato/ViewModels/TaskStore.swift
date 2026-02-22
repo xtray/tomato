@@ -7,11 +7,14 @@ enum TimerPhase: String, Codable {
     case shortBreak
     case longBreak
     
-    var displayName: String {
+    func displayName(language: AppLanguage) -> String {
         switch self {
-        case .work: return "Focus Time"
-        case .shortBreak: return "Short Break"
-        case .longBreak: return "Long Break"
+        case .work:
+            return AppText.string("timer.phase.work", language: language)
+        case .shortBreak:
+            return AppText.string("timer.phase.short_break", language: language)
+        case .longBreak:
+            return AppText.string("timer.phase.long_break", language: language)
         }
     }
     
@@ -27,11 +30,17 @@ enum TimerPhase: String, Codable {
 class TaskStore: ObservableObject {
     @Published var tasks: [PomodoroTask] = []
     @Published var selectedTask: PomodoroTask?
+    @Published private(set) var sessionTaskID: UUID?
     @Published var isTimerRunning: Bool = false
     @Published var remainingSeconds: Int = 25 * 60
     @Published var currentPhase: TimerPhase = .work
     @Published var showingFloatingWindow: Bool = false
     @Published var showingSettings: Bool = false
+    @Published var appLanguage: AppLanguage {
+        didSet {
+            LanguagePreferences.save(appLanguage)
+        }
+    }
     @Published var themeMode: ThemeMode {
         didSet {
             ThemePreferences.save(themeMode)
@@ -67,11 +76,21 @@ class TaskStore: ObservableObject {
     
     private var timer: Timer?
     private var completedWorkSessions: Int = 0
+    private var sessionTaskSnapshot: PomodoroTask?
+
+    var timerDisplayTask: PomodoroTask? {
+        guard let sessionTaskID else {
+            return selectedTask
+        }
+
+        return tasks.first(where: { $0.id == sessionTaskID }) ?? sessionTaskSnapshot
+    }
     
     init() {
         let savedWorkDuration = UserDefaults.standard.integer(forKey: "workDuration")
         let savedShortBreakDuration = UserDefaults.standard.integer(forKey: "shortBreakDuration")
         let savedLongBreakDuration = UserDefaults.standard.integer(forKey: "longBreakDuration")
+        self.appLanguage = LanguagePreferences.load()
         self.themeMode = ThemePreferences.load()
         
         self.workDuration = savedWorkDuration > 0 ? savedWorkDuration : 25 * 60
@@ -111,7 +130,9 @@ class TaskStore: ObservableObject {
     }
     
     func startFocusSession() {
-        guard selectedTask != nil else { return }
+        guard let selectedTask else { return }
+        sessionTaskID = selectedTask.id
+        sessionTaskSnapshot = selectedTask
         isTimerRunning = true
         currentPhase = .work
         remainingSeconds = workDuration
@@ -123,6 +144,7 @@ class TaskStore: ObservableObject {
         timer?.invalidate()
         timer = nil
         isTimerRunning = false
+        clearSessionTask()
     }
     
     func resetTimer() {
@@ -149,9 +171,13 @@ class TaskStore: ObservableObject {
     private func timerCompleted() {
         if currentPhase == .work {
             completedWorkSessions += 1
-            if let index = tasks.firstIndex(where: { $0.id == selectedTask?.id }) {
+            if let sessionTaskID,
+               let index = tasks.firstIndex(where: { $0.id == sessionTaskID }) {
                 tasks[index].completedPomodoros += 1
-                selectedTask = tasks[index]
+                sessionTaskSnapshot = tasks[index]
+                if selectedTask?.id == sessionTaskID {
+                    selectedTask = tasks[index]
+                }
                 saveTasks()
             }
             
@@ -168,6 +194,11 @@ class TaskStore: ObservableObject {
             stopTimer()
             showingFloatingWindow = false
         }
+    }
+
+    private func clearSessionTask() {
+        sessionTaskID = nil
+        sessionTaskSnapshot = nil
     }
     
     private func saveTasks() {

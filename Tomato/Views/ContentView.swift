@@ -6,6 +6,7 @@ struct ContentView: View {
     @State private var newTaskTitle: String = ""
     @State private var taskPendingDeletion: PomodoroTask?
     @State private var showingDeleteConfirmation: Bool = false
+    @State private var selectedTaskID: UUID?
 
     var body: some View {
         ZStack {
@@ -38,16 +39,28 @@ struct ContentView: View {
                 }
             }
         }
-        .alert("删除任务？", isPresented: $showingDeleteConfirmation, presenting: taskPendingDeletion) { task in
-            Button("删除", role: .destructive) {
+        .onAppear {
+            selectedTaskID = taskStore.selectedTask?.id
+        }
+        .onChange(of: selectedTaskID) { newValue in
+            guard taskStore.selectedTask?.id != newValue else { return }
+            let selectedTask = taskStore.tasks.first(where: { $0.id == newValue })
+            taskStore.selectTask(selectedTask)
+        }
+        .onChange(of: taskStore.selectedTask?.id) { newValue in
+            guard selectedTaskID != newValue else { return }
+            selectedTaskID = newValue
+        }
+        .alert(AppText.string("alert.delete_task.title", language: language), isPresented: $showingDeleteConfirmation, presenting: taskPendingDeletion) { task in
+            Button(AppText.string("alert.delete_task.confirm", language: language), role: .destructive) {
                 taskStore.deleteTask(id: task.id)
                 taskPendingDeletion = nil
             }
-            Button("取消", role: .cancel) {
+            Button(AppText.string("alert.delete_task.cancel", language: language), role: .cancel) {
                 taskPendingDeletion = nil
             }
         } message: { task in
-            Text("确认删除任务“\(task.title)”吗？此操作无法撤销。")
+            Text(AppText.string("alert.delete_task.message", language: language, task.title))
         }
     }
 
@@ -59,7 +72,7 @@ struct ContentView: View {
         GlassCard(mode: mode, padding: AppTheme.Spacing.sm) {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.sm) {
                 HStack(alignment: .center) {
-                    Text("Tasks")
+                    Text(AppText.string("task.section_title", language: language))
                         .font(AppTheme.Typography.sectionTitle)
 
                     GlassTag(
@@ -76,15 +89,15 @@ struct ContentView: View {
                                 taskStore.themeMode = option
                             } label: {
                                 if option == mode {
-                                    Label(option.displayName, systemImage: "checkmark")
+                                    Label(option.displayName(language: language), systemImage: "checkmark")
                                 } else {
-                                    Text(option.displayName)
+                                    Text(option.displayName(language: language))
                                 }
                             }
                         }
                     } label: {
                         Label {
-                            Text("Theme")
+                            Text(AppText.string("common.theme", language: language))
                                 .font(.system(size: 12, weight: .medium))
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.85)
@@ -94,7 +107,7 @@ struct ContentView: View {
                     }
                     .frame(minWidth: 94)
                     .buttonStyle(SecondaryGlassButtonStyle(mode: mode))
-                    .help("Quick theme switch")
+                    .help(AppText.string("help.quick_theme", language: language))
 
                     Button {
                         taskStore.showingSettings = true
@@ -102,7 +115,7 @@ struct ContentView: View {
                         Image(systemName: "gearshape")
                     }
                     .buttonStyle(SecondaryGlassButtonStyle(mode: mode))
-                    .help("Settings")
+                    .help(AppText.string("help.settings", language: language))
                 }
                 .padding(.horizontal, AppTheme.Spacing.xs)
 
@@ -111,9 +124,9 @@ struct ContentView: View {
                         Image(systemName: "list.bullet.clipboard")
                             .font(.system(size: 28, weight: .light))
                             .foregroundStyle(AppTheme.Colors.textSecondary(for: mode))
-                        Text("No tasks yet")
+                        Text(AppText.string("task.empty.title", language: language))
                             .font(.headline)
-                        Text("Add your first task and start a focus session.")
+                        Text(AppText.string("task.empty.subtitle", language: language))
                             .font(.caption)
                             .foregroundStyle(AppTheme.Colors.textSecondary(for: mode))
                             .multilineTextAlignment(.center)
@@ -121,27 +134,28 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(.horizontal, AppTheme.Spacing.md)
                 } else {
-                    List(selection: $taskStore.selectedTask) {
+                    List(selection: $selectedTaskID) {
                         ForEach(taskStore.tasks) { task in
                             TaskRowView(
                                 task: task,
-                                isSelected: taskStore.selectedTask?.id == task.id,
+                                isSelected: selectedTaskID == task.id,
                                 themeMode: mode,
                                 onToggleComplete: {
                                     taskStore.toggleTaskCompletion(task)
                                 }
                             )
-                            .tag(task)
-                            .onTapGesture {
-                                taskStore.selectTask(task)
-                            }
+                            .tag(task.id)
                             .contextMenu {
-                                Button(task.isCompleted ? "标记为未完成" : "标记完成") {
+                                Button(
+                                    task.isCompleted
+                                    ? AppText.string("task.mark.undone", language: language)
+                                    : AppText.string("task.mark.done", language: language)
+                                ) {
                                     taskStore.selectTask(task)
                                     taskStore.toggleTaskCompletion(task)
                                 }
 
-                                Button("删除任务", role: .destructive) {
+                                Button(AppText.string("task.delete", language: language), role: .destructive) {
                                     taskStore.selectTask(task)
                                     taskPendingDeletion = task
                                     showingDeleteConfirmation = true
@@ -156,7 +170,7 @@ struct ContentView: View {
                 }
 
                 HStack(spacing: AppTheme.Spacing.xs) {
-                    TextField("Add new task...", text: $newTaskTitle)
+                    TextField(AppText.string("task.add.placeholder", language: language), text: $newTaskTitle)
                         .textFieldStyle(.plain)
                         .padding(.horizontal, AppTheme.Spacing.sm)
                         .padding(.vertical, 9)
@@ -185,7 +199,7 @@ struct ContentView: View {
     var timerView: some View {
         GlassCard(mode: mode) {
             VStack(spacing: AppTheme.Spacing.lg) {
-                if let task = taskStore.selectedTask {
+                if let task = taskStore.timerDisplayTask {
                     VStack(spacing: AppTheme.Spacing.xs) {
                         Text(task.title)
                             .font(.system(size: 26, weight: .semibold, design: .rounded))
@@ -195,7 +209,7 @@ struct ContentView: View {
                         HStack(spacing: AppTheme.Spacing.xs) {
                             Image(systemName: "flame.fill")
                                 .foregroundStyle(AppTheme.Colors.tomatoSecondary(for: mode))
-                            Text("\(task.completedPomodoros) pomodoros completed")
+                            Text(AppText.string("task.completed.count", language: language, task.completedPomodoros))
                                 .foregroundStyle(AppTheme.Colors.textSecondary(for: mode))
                         }
                         .font(.subheadline)
@@ -205,7 +219,7 @@ struct ContentView: View {
                         Image(systemName: "timer")
                             .font(.system(size: 40, weight: .light))
                             .foregroundStyle(AppTheme.Colors.textSecondary(for: mode))
-                        Text("Select a task")
+                        Text(AppText.string("task.select.prompt", language: language))
                             .font(.title3)
                             .foregroundStyle(AppTheme.Colors.textSecondary(for: mode))
                     }
@@ -221,7 +235,7 @@ struct ContentView: View {
                         .frame(width: 206, height: 206)
 
                     Circle()
-                        .trim(from: 0, to: timerProgress)
+                        .trim(from: timerElapsedProgress, to: 1)
                         .stroke(
                             timerColor,
                             style: StrokeStyle(lineWidth: 12, lineCap: .round)
@@ -246,14 +260,14 @@ struct ContentView: View {
                         Button {
                             taskStore.stopTimer()
                         } label: {
-                            Label("Stop", systemImage: "stop.fill")
+                            Label(AppText.string("common.stop", language: language), systemImage: "stop.fill")
                         }
                         .buttonStyle(PrimaryGlassButtonStyle(mode: mode))
                     } else {
                         Button {
                             taskStore.startFocusSession()
                         } label: {
-                            Label("Focus", systemImage: "play.fill")
+                            Label(AppText.string("common.focus", language: language), systemImage: "play.fill")
                         }
                         .buttonStyle(PrimaryGlassButtonStyle(mode: mode))
                         .disabled(taskStore.selectedTask == nil)
@@ -262,14 +276,14 @@ struct ContentView: View {
                     Button {
                         taskStore.resetTimer()
                     } label: {
-                        Label("Reset", systemImage: "arrow.counterclockwise")
+                        Label(AppText.string("common.reset", language: language), systemImage: "arrow.counterclockwise")
                     }
                     .buttonStyle(SecondaryGlassButtonStyle(mode: mode))
 
                     Button {
                         taskStore.showingFloatingWindow = true
                     } label: {
-                        Label("Float", systemImage: "rectangle.portrait.and.arrow.right")
+                        Label(AppText.string("common.float", language: language), systemImage: "rectangle.portrait.and.arrow.right")
                     }
                     .buttonStyle(SecondaryGlassButtonStyle(mode: mode))
                     .disabled(taskStore.selectedTask == nil)
@@ -292,7 +306,7 @@ struct ContentView: View {
     }
 
     var phaseText: String {
-        taskStore.currentPhase.displayName
+        taskStore.currentPhase.displayName(language: language)
     }
 
     var timeString: String {
@@ -301,8 +315,8 @@ struct ContentView: View {
         return String(format: "%02d:%02d", minutes, seconds)
     }
 
-    var timerProgress: CGFloat {
-        TimerProgressCalculator.progress(
+    var timerElapsedProgress: CGFloat {
+        TimerProgressCalculator.elapsedProgress(
             remaining: taskStore.remainingSeconds,
             total: currentPhaseDuration
         )
@@ -321,6 +335,10 @@ struct ContentView: View {
 
     var mode: ThemeMode {
         taskStore.themeMode
+    }
+
+    var language: AppLanguage {
+        taskStore.appLanguage
     }
 }
 

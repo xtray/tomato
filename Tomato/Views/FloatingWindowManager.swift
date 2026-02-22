@@ -42,19 +42,9 @@ class FloatingWindowController: NSObject, ObservableObject {
     }
 
     private func createWindow(taskStore: TaskStore) {
-        let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 208, height: 232),
-            styleMask: [.borderless, .nonactivatingPanel, .utilityWindow],
-            backing: .buffered,
-            defer: false
+        let panel = Self.makePanel(
+            contentRect: NSRect(x: 0, y: 0, width: 208, height: 232)
         )
-
-        panel.level = .floating
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.hidesOnDeactivate = false
 
         let contentView = FloatingTimerContentView(taskStore: taskStore) { [weak self] in
             self?.hide()
@@ -66,6 +56,24 @@ class FloatingWindowController: NSObject, ObservableObject {
 
         self.hostingView = hosting
         self.window = panel
+    }
+
+    static func makePanel(contentRect: NSRect) -> NSPanel {
+        let panel = NSPanel(
+            contentRect: contentRect,
+            styleMask: [.borderless, .nonactivatingPanel, .utilityWindow],
+            backing: .buffered,
+            defer: false
+        )
+        panel.level = .floating
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.hidesOnDeactivate = false
+        panel.isMovable = true
+        panel.isMovableByWindowBackground = true
+        return panel
     }
 
     private func positionWindowAtTopRight() {
@@ -96,7 +104,7 @@ struct FloatingTimerContentView: View {
                 HStack {
                     GlassTag(
                         mode: mode,
-                        text: taskStore.currentPhase.displayName,
+                        text: taskStore.currentPhase.displayName(language: language),
                         tint: taskStore.currentPhase.themedColor(for: mode)
                     )
                     Spacer(minLength: 0)
@@ -107,10 +115,10 @@ struct FloatingTimerContentView: View {
                             .font(.system(size: 14, weight: .semibold))
                     }
                     .buttonStyle(SecondaryGlassButtonStyle(mode: mode))
-                    .help("Back to main window")
+                    .help(AppText.string("help.back_to_main", language: language))
                 }
 
-                if let task = taskStore.selectedTask {
+                if let task = taskStore.timerDisplayTask {
                     Text(task.title)
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
@@ -127,7 +135,7 @@ struct FloatingTimerContentView: View {
                         .frame(width: 98, height: 98)
 
                     Circle()
-                        .trim(from: 0, to: timerProgress)
+                        .trim(from: timerElapsedProgress, to: 1)
                         .stroke(
                             taskStore.currentPhase.themedColor(for: mode),
                             style: StrokeStyle(lineWidth: 8, lineCap: .round)
@@ -181,8 +189,8 @@ struct FloatingTimerContentView: View {
         return String(format: "%02d:%02d", minutes, seconds)
     }
 
-    var timerProgress: CGFloat {
-        TimerProgressCalculator.progress(
+    var timerElapsedProgress: CGFloat {
+        TimerProgressCalculator.elapsedProgress(
             remaining: taskStore.remainingSeconds,
             total: currentPhaseDuration
         )
@@ -201,5 +209,9 @@ struct FloatingTimerContentView: View {
 
     var mode: ThemeMode {
         taskStore.themeMode
+    }
+
+    var language: AppLanguage {
+        taskStore.appLanguage
     }
 }

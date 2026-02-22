@@ -13,13 +13,16 @@
 		188F499E2A3D29BF8CF9BF10 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C41FEF470A1073B52BBF148 /* ContentView.swift */; };
 		21FC78AD9D0B994F8F194885 /* TimerProgressCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FA5288D02556641ABFB0F2 /* TimerProgressCalculator.swift */; };
 		3810C3EF43AA036AC8D96C1B /* Task.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11104527307BDE0FC4F69EC8 /* Task.swift */; };
+		3BDDA01A90AEDBE4600A71D6 /* AppTextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C89EA6DBFA39D5CFDF43FCB9 /* AppTextTests.swift */; };
 		3DCA5A3759A0C8D564AF4072 /* TaskStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4664C60B44A0BAE4962E5EB9 /* TaskStore.swift */; };
 		41E464384A17DDD941C28B0D /* TimerProgressCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFFC93752F639DD102F75C7D /* TimerProgressCalculatorTests.swift */; };
 		4772B774A23460E8F52DC842 /* FloatingWindowManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48A277E12E39B16D4634B129 /* FloatingWindowManager.swift */; };
 		772B6911789D9B590F4419C5 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E733954775EDA2A567E6927D /* SettingsView.swift */; };
+		9139F19A06AC9D43591E31E1 /* AppLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 380FD6BE9BE9EC5591771303 /* AppLocalization.swift */; };
 		A91E2BC17EF53D4B632C9E34 /* TaskStoreThemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FCA29E1C9E91309EB56AB08 /* TaskStoreThemeTests.swift */; };
 		AE5275D5B880A7FEB53D61D7 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60D48CCF77E7D1A140DB48CE /* AppTheme.swift */; };
 		C119C2548EF90B7905AFB191 /* ThemePreferencesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00F1E7990AF5EBDCA129A974 /* ThemePreferencesTests.swift */; };
+		C1256952274BD299ACBD15F1 /* LanguagePreferencesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C37581BD424812C5C36497E9 /* LanguagePreferencesTests.swift */; };
 		E9B7A40E181D4F181B14CAA7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 38FB82111E6B4D55CB8DE1D9 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -37,6 +40,7 @@
 		00F1E7990AF5EBDCA129A974 /* ThemePreferencesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemePreferencesTests.swift; sourceTree = "<group>"; };
 		11104527307BDE0FC4F69EC8 /* Task.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Task.swift; sourceTree = "<group>"; };
 		27C7022D1197550E5344D1CC /* TomatoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TomatoApp.swift; sourceTree = "<group>"; };
+		380FD6BE9BE9EC5591771303 /* AppLocalization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLocalization.swift; sourceTree = "<group>"; };
 		38FB82111E6B4D55CB8DE1D9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3FCA29E1C9E91309EB56AB08 /* TaskStoreThemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskStoreThemeTests.swift; sourceTree = "<group>"; };
 		4664C60B44A0BAE4962E5EB9 /* TaskStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskStore.swift; sourceTree = "<group>"; };
@@ -47,6 +51,8 @@
 		93FA5288D02556641ABFB0F2 /* TimerProgressCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimerProgressCalculator.swift; sourceTree = "<group>"; };
 		9F070D24B12077B4BEBE8BBB /* ThemeSemanticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeSemanticsTests.swift; sourceTree = "<group>"; };
 		C33E5C9DF1DAB8A9EFD36D5F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		C37581BD424812C5C36497E9 /* LanguagePreferencesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguagePreferencesTests.swift; sourceTree = "<group>"; };
+		C89EA6DBFA39D5CFDF43FCB9 /* AppTextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTextTests.swift; sourceTree = "<group>"; };
 		E261B81AFDB0B5988BB34B41 /* Tomato.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tomato.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E6F8A7162523DC7C025C25B7 /* GlassComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassComponents.swift; sourceTree = "<group>"; };
 		E733954775EDA2A567E6927D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -62,6 +68,14 @@
 				93FA5288D02556641ABFB0F2 /* TimerProgressCalculator.swift */,
 			);
 			path = Theme;
+			sourceTree = "<group>";
+		};
+		3349A1AE1229FEC4512489E0 /* Localization */ = {
+			isa = PBXGroup;
+			children = (
+				380FD6BE9BE9EC5591771303 /* AppLocalization.swift */,
+			);
+			path = Localization;
 			sourceTree = "<group>";
 		};
 		347D2DFE15C781DAD6E0BDA8 /* Products */ = {
@@ -84,6 +98,8 @@
 		6B9EE3138F0FA24142B40250 /* TomatoTests */ = {
 			isa = PBXGroup;
 			children = (
+				C89EA6DBFA39D5CFDF43FCB9 /* AppTextTests.swift */,
+				C37581BD424812C5C36497E9 /* LanguagePreferencesTests.swift */,
 				3FCA29E1C9E91309EB56AB08 /* TaskStoreThemeTests.swift */,
 				00F1E7990AF5EBDCA129A974 /* ThemePreferencesTests.swift */,
 				9F070D24B12077B4BEBE8BBB /* ThemeSemanticsTests.swift */,
@@ -122,6 +138,7 @@
 			isa = PBXGroup;
 			children = (
 				27C7022D1197550E5344D1CC /* TomatoApp.swift */,
+				3349A1AE1229FEC4512489E0 /* Localization */,
 				97D11E885168C02E9A3EAE67 /* Models */,
 				96A331BBEE1EC7510C5221F4 /* Resources */,
 				0BE6EBA4868089510A37D62C /* Theme */,
@@ -234,6 +251,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9139F19A06AC9D43591E31E1 /* AppLocalization.swift in Sources */,
 				AE5275D5B880A7FEB53D61D7 /* AppTheme.swift in Sources */,
 				188F499E2A3D29BF8CF9BF10 /* ContentView.swift in Sources */,
 				4772B774A23460E8F52DC842 /* FloatingWindowManager.swift in Sources */,
@@ -250,6 +268,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3BDDA01A90AEDBE4600A71D6 /* AppTextTests.swift in Sources */,
+				C1256952274BD299ACBD15F1 /* LanguagePreferencesTests.swift in Sources */,
 				A91E2BC17EF53D4B632C9E34 /* TaskStoreThemeTests.swift in Sources */,
 				C119C2548EF90B7905AFB191 /* ThemePreferencesTests.swift in Sources */,
 				13185F44064327C47008EDAE /* ThemeSemanticsTests.swift in Sources */,
@@ -293,7 +313,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_ALLOWED = YES;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;

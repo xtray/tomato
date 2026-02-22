@@ -4,6 +4,7 @@ import AppKit
 @main
 struct TomatoApp: App {
     @StateObject private var taskStore = TaskStore()
+    @State private var commandsLanguage = LanguagePreferences.load()
 
     init() {
         applyRuntimeAppIcon()
@@ -18,27 +19,29 @@ struct TomatoApp: App {
         .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .newItem) {}
-            CommandMenu("Timer") {
-                Button("Start Focus") {
+            // Keep Commands menu language stable during runtime.
+            // Updating CommandMenu titles live can trigger AppKit menu mapping warnings/crashes.
+            CommandMenu(AppText.string("menu.timer", language: commandsLanguage)) {
+                Button(AppText.string("menu.start_focus", language: commandsLanguage)) {
                     taskStore.startFocusSession()
                 }
                 .keyboardShortcut("s", modifiers: [.command])
                 .disabled(taskStore.selectedTask == nil)
                 
-                Button("Stop") {
+                Button(AppText.string("common.stop", language: commandsLanguage)) {
                     taskStore.stopTimer()
                 }
                 .keyboardShortcut(".", modifiers: [.command])
                 .disabled(!taskStore.isTimerRunning)
                 
-                Button("Reset") {
+                Button(AppText.string("common.reset", language: commandsLanguage)) {
                     taskStore.resetTimer()
                 }
                 .keyboardShortcut("r", modifiers: [.command])
                 
                 Divider()
                 
-                Button("Settings...") {
+                Button(AppText.string("menu.settings", language: commandsLanguage)) {
                     taskStore.showingSettings = true
                 }
                 .keyboardShortcut(",", modifiers: [.command])

@@ -8,4 +8,8 @@ enum TimerProgressCalculator {
         if raw > 1 { return 1 }
         return raw
     }
+
+    static func elapsedProgress(remaining: Int, total: Int) -> CGFloat {
+        1 - progress(remaining: remaining, total: total)
+    }
 }

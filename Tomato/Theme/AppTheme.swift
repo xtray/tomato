@@ -5,12 +5,12 @@ enum ThemeMode: String, CaseIterable, Codable, Equatable {
     case glassVivid
     case businessMotion
 
-    var displayName: String {
+    func displayName(language: AppLanguage) -> String {
         switch self {
         case .glassVivid:
-            return "Glass Vivid"
+            return AppText.string("theme.mode.glass_vivid", language: language)
         case .businessMotion:
-            return "Business Motion"
+            return AppText.string("theme.mode.business_motion", language: language)
         }
     }
 }

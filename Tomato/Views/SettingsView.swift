@@ -12,9 +12,9 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Settings")
+                            Text(AppText.string("settings.title", language: language))
                                 .font(.system(size: 24, weight: .bold, design: .rounded))
-                            Text("Tune your focus rhythm")
+                            Text(AppText.string("settings.subtitle", language: language))
                                 .font(.subheadline)
                                 .foregroundStyle(AppTheme.Colors.textSecondary(for: mode))
                         }
@@ -30,11 +30,31 @@ struct SettingsView: View {
                     }
 
                     VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
-                        Text("Theme")
+                        Text(AppText.string("settings.theme", language: language))
                             .font(.system(size: 14, weight: .semibold))
 
-                        Picker("Theme", selection: $taskStore.themeMode) {
+                        Picker(AppText.string("settings.theme", language: language), selection: themeSelection) {
                             ForEach(ThemeMode.allCases, id: \.self) { option in
+                                Text(option.displayName(language: language)).tag(option)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    .padding(.horizontal, AppTheme.Spacing.sm)
+                    .padding(.vertical, AppTheme.Spacing.sm)
+                    .background(AppTheme.Colors.textFieldFill(for: mode))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous)
+                            .stroke(AppTheme.Colors.textFieldStroke(for: mode), lineWidth: 0.8)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                        Text(AppText.string("settings.language", language: language))
+                            .font(.system(size: 14, weight: .semibold))
+
+                        Picker(AppText.string("settings.language", language: language), selection: languageSelection) {
+                            ForEach(AppLanguage.allCases, id: \.self) { option in
                                 Text(option.displayName).tag(option)
                             }
                         }
@@ -50,7 +70,7 @@ struct SettingsView: View {
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous))
 
                     durationSetting(
-                        title: "Focus Duration",
+                        title: AppText.string("settings.duration.focus", language: language),
                         icon: "bolt.fill",
                         value: $taskStore.workDuration,
                         range: 1...60,
@@ -58,7 +78,7 @@ struct SettingsView: View {
                     )
 
                     durationSetting(
-                        title: "Short Break",
+                        title: AppText.string("settings.duration.short_break", language: language),
                         icon: "leaf.fill",
                         value: $taskStore.shortBreakDuration,
                         range: 1...30,
@@ -66,7 +86,7 @@ struct SettingsView: View {
                     )
 
                     durationSetting(
-                        title: "Long Break",
+                        title: AppText.string("settings.duration.long_break", language: language),
                         icon: "moon.stars.fill",
                         value: $taskStore.longBreakDuration,
                         range: 1...60,
@@ -75,7 +95,7 @@ struct SettingsView: View {
 
                     HStack {
                         Spacer()
-                        Button("Done") {
+                        Button(AppText.string("settings.done", language: language)) {
                             dismiss()
                         }
                         .buttonStyle(PrimaryGlassButtonStyle(mode: mode))
@@ -84,7 +104,7 @@ struct SettingsView: View {
             }
             .padding(AppTheme.Spacing.md)
         }
-        .frame(width: 420, height: 360)
+        .frame(width: 440, height: 500)
     }
 
     private func durationSetting(title: String, icon: String, value: Binding<Int>, range: ClosedRange<Int>, color: Color) -> some View {
@@ -101,7 +121,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.system(size: 14, weight: .semibold))
-                Text("Current: \(value.wrappedValue / 60) min")
+                Text(AppText.string("settings.duration.current", language: language, value.wrappedValue / 60))
                     .font(.caption)
                     .foregroundStyle(AppTheme.Colors.textSecondary(for: mode))
             }
@@ -110,7 +130,7 @@ struct SettingsView: View {
 
             Picker("", selection: value) {
                 ForEach(range, id: \.self) { minute in
-                    Text("\(minute) min").tag(minute * 60)
+                    Text(AppText.string("settings.duration.minutes", language: language, minute)).tag(minute * 60)
                 }
             }
             .labelsHidden()
@@ -129,5 +149,34 @@ struct SettingsView: View {
 
     var mode: ThemeMode {
         taskStore.themeMode
+    }
+
+    var language: AppLanguage {
+        taskStore.appLanguage
+    }
+
+    private var themeSelection: Binding<ThemeMode> {
+        Binding(
+            get: { taskStore.themeMode },
+            set: { newValue in
+                guard taskStore.themeMode != newValue else { return }
+                // Defer publishing to next run loop to avoid state publishing during view updates.
+                DispatchQueue.main.async {
+                    taskStore.themeMode = newValue
+                }
+            }
+        )
+    }
+
+    private var languageSelection: Binding<AppLanguage> {
+        Binding(
+            get: { taskStore.appLanguage },
+            set: { newValue in
+                guard taskStore.appLanguage != newValue else { return }
+                DispatchQueue.main.async {
+                    taskStore.appLanguage = newValue
+                }
+            }
+        )
     }
 }
