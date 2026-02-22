@@ -28,3 +28,17 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: NO
         CODE_SIGNING_ALLOWED: NO
+
+  TomatoTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - TomatoTests
+    dependencies:
+      - target: Tomato
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tomato.tests
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO

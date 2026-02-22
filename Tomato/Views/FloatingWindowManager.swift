@@ -3,35 +3,35 @@ import AppKit
 
 class FloatingWindowController: NSObject, ObservableObject {
     static let shared = FloatingWindowController()
-    
+
     private var window: NSPanel?
     private var hostingView: NSHostingView<AnyView>?
     private var onCloseCallback: (() -> Void)?
-    
+
     @Published var isVisible: Bool = false
-    
+
     private override init() {
         super.init()
     }
-    
+
     func show(taskStore: TaskStore, onClose: @escaping () -> Void) {
         self.onCloseCallback = onClose
-        
+
         if window == nil {
             createWindow(taskStore: taskStore)
         }
-        
+
         update(taskStore: taskStore)
         positionWindowAtTopRight()
         window?.orderFront(nil)
         isVisible = true
     }
-    
+
     func hide() {
         window?.orderOut(nil)
         isVisible = false
     }
-    
+
     func update(taskStore: TaskStore) {
         if let hostingView = hostingView {
             hostingView.rootView = AnyView(FloatingTimerContentView(taskStore: taskStore) { [weak self] in
@@ -40,48 +40,48 @@ class FloatingWindowController: NSObject, ObservableObject {
             })
         }
     }
-    
+
     private func createWindow(taskStore: TaskStore) {
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 160, height: 180),
+            contentRect: NSRect(x: 0, y: 0, width: 208, height: 232),
             styleMask: [.borderless, .nonactivatingPanel, .utilityWindow],
             backing: .buffered,
             defer: false
         )
-        
+
         panel.level = .floating
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.hidesOnDeactivate = false
-        
+
         let contentView = FloatingTimerContentView(taskStore: taskStore) { [weak self] in
             self?.hide()
             self?.onCloseCallback?()
         }
-        
+
         let hosting = NSHostingView(rootView: AnyView(contentView))
         panel.contentView = hosting
-        
+
         self.hostingView = hosting
         self.window = panel
     }
-    
+
     private func positionWindowAtTopRight() {
         guard let window = self.window else { return }
         let mouseLocation = NSEvent.mouseLocation
         let screen = NSScreen.screens.first(where: { NSMouseInRect(mouseLocation, $0.frame, false) }) ?? NSScreen.main
         guard let screen else { return }
-        
+
         let screenFrame = screen.visibleFrame
-        let windowWidth: CGFloat = 160
-        let windowHeight: CGFloat = 180
+        let windowWidth: CGFloat = 208
+        let windowHeight: CGFloat = 232
         let padding: CGFloat = 20
-        
+
         let x = screenFrame.maxX - windowWidth - padding
         let y = screenFrame.maxY - windowHeight - padding
-        
+
         window.setFrame(NSRect(x: x, y: y, width: windowWidth, height: windowHeight), display: true)
     }
 }
@@ -89,102 +89,105 @@ class FloatingWindowController: NSObject, ObservableObject {
 struct FloatingTimerContentView: View {
     @ObservedObject var taskStore: TaskStore
     var onClose: () -> Void
-    
+
     var body: some View {
-        VStack(spacing: 8) {
-            if let task = taskStore.selectedTask {
-                Text(task.title)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            
-            ZStack {
-                Circle()
-                    .stroke(Color.gray.opacity(0.2), lineWidth: 8)
-                    .frame(width: 100, height: 100)
-                
-                Circle()
-                    .trim(from: 0, to: timerProgress)
-                    .stroke(taskStore.currentPhase.color, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                    .frame(width: 100, height: 100)
-                    .rotationEffect(.degrees(-90))
-                    .animation(.linear(duration: 1), value: taskStore.remainingSeconds)
-                
-                VStack(spacing: 2) {
+        GlassCard(mode: mode, padding: 10) {
+            VStack(spacing: 10) {
+                HStack {
+                    GlassTag(
+                        mode: mode,
+                        text: taskStore.currentPhase.displayName,
+                        tint: taskStore.currentPhase.themedColor(for: mode)
+                    )
+                    Spacer(minLength: 0)
+                    Button {
+                        onClose()
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward.circle.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .buttonStyle(SecondaryGlassButtonStyle(mode: mode))
+                    .help("Back to main window")
+                }
+
+                if let task = taskStore.selectedTask {
+                    Text(task.title)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.25))
+                        .frame(width: 116, height: 116)
+
+                    Circle()
+                        .stroke(AppTheme.Colors.ringTrack(for: mode), lineWidth: 8)
+                        .frame(width: 98, height: 98)
+
+                    Circle()
+                        .trim(from: 0, to: timerProgress)
+                        .stroke(
+                            taskStore.currentPhase.themedColor(for: mode),
+                            style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                        )
+                        .frame(width: 98, height: 98)
+                        .rotationEffect(.degrees(-90))
+                        .shadow(color: AppTheme.Colors.ringGlow(for: mode), radius: 4)
+                        .animation(.linear(duration: 1), value: taskStore.remainingSeconds)
+
                     Text(timeString)
-                        .font(.system(size: 20, weight: .light, design: .monospaced))
+                        .font(.system(size: 19, weight: .light, design: .monospaced))
                         .contentTransition(.numericText())
                         .animation(.linear(duration: 0.5), value: taskStore.remainingSeconds)
-                    
-                    Text(taskStore.currentPhase.displayName)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
                 }
-            }
-            
-            HStack(spacing: 12) {
-                if taskStore.isTimerRunning {
-                    Button {
-                        taskStore.stopTimer()
-                    } label: {
-                        Image(systemName: "pause.fill")
-                            .font(.caption)
+
+                HStack(spacing: 8) {
+                    if taskStore.isTimerRunning {
+                        Button {
+                            taskStore.stopTimer()
+                        } label: {
+                            Image(systemName: "pause.fill")
+                        }
+                        .buttonStyle(PrimaryGlassButtonStyle(mode: mode))
+                    } else {
+                        Button {
+                            taskStore.startFocusSession()
+                        } label: {
+                            Image(systemName: "play.fill")
+                        }
+                        .buttonStyle(PrimaryGlassButtonStyle(mode: mode))
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
-                    .controlSize(.small)
-                } else {
+
                     Button {
-                        taskStore.startFocusSession()
+                        taskStore.resetTimer()
                     } label: {
-                        Image(systemName: "play.fill")
-                            .font(.caption)
+                        Image(systemName: "arrow.counterclockwise")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+                    .buttonStyle(SecondaryGlassButtonStyle(mode: mode))
                 }
-                
-                Button {
-                    taskStore.resetTimer()
-                } label: {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.caption)
-                }
-                .buttonStyle(.bordered)
                 .controlSize(.small)
-                
-                Button {
-                    onClose()
-                } label: {
-                    Label("Back", systemImage: "arrow.uturn.backward.circle.fill")
-                        .labelStyle(.iconOnly)
-                        .font(.caption)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help("Back to main window")
             }
         }
-        .padding(12)
-        .frame(width: 160, height: 180)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+        .frame(width: 208, height: 232)
+        .padding(8)
+        .background(Color.clear)
     }
-    
+
     var timeString: String {
         let minutes = taskStore.remainingSeconds / 60
         let seconds = taskStore.remainingSeconds % 60
         return String(format: "%02d:%02d", minutes, seconds)
     }
-    
+
     var timerProgress: CGFloat {
-        let total = CGFloat(currentPhaseDuration)
-        return CGFloat(taskStore.remainingSeconds) / total
+        TimerProgressCalculator.progress(
+            remaining: taskStore.remainingSeconds,
+            total: currentPhaseDuration
+        )
     }
-    
+
     var currentPhaseDuration: Int {
         switch taskStore.currentPhase {
         case .work:
@@ -194,5 +197,9 @@ struct FloatingTimerContentView: View {
         case .longBreak:
             return taskStore.longBreakDuration
         }
+    }
+
+    var mode: ThemeMode {
+        taskStore.themeMode
     }
 }
