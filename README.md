@@ -41,6 +41,48 @@ xcodebuild -project Tomato.xcodeproj -scheme Tomato -configuration Debug -derive
 open build/DerivedData/Build/Products/Debug/Tomato.app
 ```
 
+## GitHub Tag 自动发布（macOS + Windows）
+
+推送 `v*` 格式的 tag（例如 `v1.2.0`）后，GitHub Actions 会自动触发发布流程：
+
+1. 在 macOS runner 编译并上传 `Tomato-<tag>-macOS.zip`
+2. 在 Windows runner 编译并上传 `Tomato-<tag>-windows-x64.exe`
+3. 自动创建（或更新）对应 tag 的 GitHub Release，并附带以上产物
+
+工作流文件：`.github/workflows/release-macos.yml`（同时负责 macOS + Windows）。
+也可以在 GitHub Actions 页面手动触发同一流程（`workflow_dispatch`）。
+
+示例命令：
+
+```bash
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+Windows 可执行文件来自 `Tomato.WindowsGui`（WinForms 窗口版本），下载后可直接双击运行。
+
+如果你希望在 macOS 本地手动编译 Windows `exe`，先安装 .NET SDK：
+
+```bash
+brew install --cask dotnet-sdk
+```
+
+然后执行：
+
+```bash
+dotnet publish Tomato.WindowsGui/Tomato.WindowsGui.csproj \
+  -c Release \
+  -r win-x64 \
+  --self-contained true \
+  /p:PublishSingleFile=true \
+  /p:DebugType=None \
+  /p:DebugSymbols=false
+```
+
+默认产物：
+
+`Tomato.WindowsGui/bin/Release/net10.0-windows/win-x64/publish/Tomato.WindowsGui.exe`
+
 ## 使用文档
 
 ### 1. 创建并选择任务
@@ -84,4 +126,3 @@ open build/DerivedData/Build/Products/Debug/Tomato.app
 
 - 任务列表（含完成状态、番茄统计）
 - 番茄钟时长配置
-

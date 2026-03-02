@@ -2,3 +2,5 @@ build/
 .worktrees/
 xcuserdata/
 *.xcuserstate
+**/bin/
+**/obj/
