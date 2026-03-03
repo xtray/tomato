@@ -256,22 +256,16 @@ struct ContentView: View {
                 }
 
                 HStack(spacing: AppTheme.Spacing.sm) {
-                    if taskStore.isTimerRunning {
-                        Button {
-                            taskStore.stopTimer()
-                        } label: {
-                            Label(AppText.string("common.stop", language: language), systemImage: "stop.fill")
-                        }
-                        .buttonStyle(PrimaryGlassButtonStyle(mode: mode))
-                    } else {
-                        Button {
-                            taskStore.startFocusSession()
-                        } label: {
-                            Label(AppText.string("common.focus", language: language), systemImage: "play.fill")
-                        }
-                        .buttonStyle(PrimaryGlassButtonStyle(mode: mode))
-                        .disabled(taskStore.selectedTask == nil)
+                    Button {
+                        handlePrimaryFocusAction()
+                    } label: {
+                        Label(
+                            AppText.string(primaryFocusActionTextKey, language: language),
+                            systemImage: primaryFocusActionIcon
+                        )
                     }
+                    .buttonStyle(PrimaryGlassButtonStyle(mode: mode))
+                    .disabled(primaryFocusActionDisabled)
 
                     Button {
                         taskStore.resetTimer()
@@ -286,9 +280,9 @@ struct ContentView: View {
                         Label(AppText.string("common.float", language: language), systemImage: "rectangle.portrait.and.arrow.right")
                     }
                     .buttonStyle(SecondaryGlassButtonStyle(mode: mode))
-                    .disabled(taskStore.selectedTask == nil)
+                    .disabled(!taskStore.canStartOrResumeFocus)
                 }
-                .disabled(taskStore.selectedTask == nil && !taskStore.isTimerRunning)
+                .disabled(!taskStore.canStartOrResumeFocus && !taskStore.isTimerRunning)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -307,6 +301,37 @@ struct ContentView: View {
 
     var phaseText: String {
         taskStore.currentPhase.displayName(language: language)
+    }
+
+    var primaryFocusActionTextKey: String {
+        switch taskStore.focusControlState {
+        case .focus:
+            return "common.focus"
+        case .run:
+            return "common.run"
+        case .pause:
+            return "common.pause"
+        }
+    }
+
+    var primaryFocusActionIcon: String {
+        taskStore.focusControlState == .pause ? "pause.fill" : "play.fill"
+    }
+
+    var primaryFocusActionDisabled: Bool {
+        if taskStore.focusControlState == .pause {
+            return false
+        }
+        return !taskStore.canStartOrResumeFocus
+    }
+
+    func handlePrimaryFocusAction() {
+        switch taskStore.focusControlState {
+        case .pause:
+            taskStore.stopTimer()
+        case .focus, .run:
+            taskStore.startFocusSession()
+        }
     }
 
     var timeString: String {

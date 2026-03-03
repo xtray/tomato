@@ -27,6 +27,12 @@ enum TimerPhase: String, Codable {
     }
 }
 
+enum FocusControlState: Equatable {
+    case focus
+    case run
+    case pause
+}
+
 class TaskStore: ObservableObject {
     @Published var tasks: [PomodoroTask] = []
     @Published var selectedTask: PomodoroTask?
@@ -50,7 +56,7 @@ class TaskStore: ObservableObject {
     @Published var workDuration: Int {
         didSet {
             UserDefaults.standard.set(workDuration, forKey: "workDuration")
-            if currentPhase == .work && !isTimerRunning {
+            if currentPhase == .work && !isTimerRunning && sessionTaskID == nil {
                 remainingSeconds = workDuration
             }
         }
@@ -59,7 +65,7 @@ class TaskStore: ObservableObject {
     @Published var shortBreakDuration: Int {
         didSet {
             UserDefaults.standard.set(shortBreakDuration, forKey: "shortBreakDuration")
-            if currentPhase == .shortBreak && !isTimerRunning {
+            if currentPhase == .shortBreak && !isTimerRunning && sessionTaskID == nil {
                 remainingSeconds = shortBreakDuration
             }
         }
@@ -68,7 +74,7 @@ class TaskStore: ObservableObject {
     @Published var longBreakDuration: Int {
         didSet {
             UserDefaults.standard.set(longBreakDuration, forKey: "longBreakDuration")
-            if currentPhase == .longBreak && !isTimerRunning {
+            if currentPhase == .longBreak && !isTimerRunning && sessionTaskID == nil {
                 remainingSeconds = longBreakDuration
             }
         }
@@ -84,6 +90,22 @@ class TaskStore: ObservableObject {
         }
 
         return tasks.first(where: { $0.id == sessionTaskID }) ?? sessionTaskSnapshot
+    }
+
+    var canStartOrResumeFocus: Bool {
+        selectedTask != nil || sessionTaskID != nil
+    }
+
+    var focusControlState: FocusControlState {
+        if isTimerRunning {
+            return .pause
+        }
+
+        if sessionTaskID != nil {
+            return .run
+        }
+
+        return .focus
     }
     
     init() {
@@ -130,6 +152,17 @@ class TaskStore: ObservableObject {
     }
     
     func startFocusSession() {
+        if isTimerRunning {
+            return
+        }
+
+        if sessionTaskID != nil {
+            isTimerRunning = true
+            showingFloatingWindow = true
+            startTimer()
+            return
+        }
+
         guard let selectedTask else { return }
         sessionTaskID = selectedTask.id
         sessionTaskSnapshot = selectedTask
@@ -144,11 +177,11 @@ class TaskStore: ObservableObject {
         timer?.invalidate()
         timer = nil
         isTimerRunning = false
-        clearSessionTask()
     }
     
     func resetTimer() {
         stopTimer()
+        clearSessionTask()
         remainingSeconds = workDuration
         currentPhase = .work
     }
@@ -158,6 +191,7 @@ class TaskStore: ObservableObject {
     }
     
     private func startTimer() {
+        timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             if self.remainingSeconds > 0 {
@@ -192,6 +226,7 @@ class TaskStore: ObservableObject {
             currentPhase = .work
             remainingSeconds = workDuration
             stopTimer()
+            clearSessionTask()
             showingFloatingWindow = false
         }
     }

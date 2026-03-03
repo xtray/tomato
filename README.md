@@ -28,17 +28,17 @@ open Tomato.xcodeproj
 ### 方式二：命令行编译
 
 ```bash
-xcodebuild -project Tomato.xcodeproj -scheme Tomato -configuration Debug -derivedDataPath ./build/DerivedData build
+xcodebuild -project Tomato.xcodeproj -scheme Tomato -configuration Release -derivedDataPath ./build/release build
 ```
 
 编译产物路径：
 
-`build/DerivedData/Build/Products/Debug/Tomato.app`
+`build/release/Build/Products/Release/Tomato.app`
 
 可直接运行：
 
 ```bash
-open build/DerivedData/Build/Products/Debug/Tomato.app
+open build/release/Build/Products/Release/Tomato.app
 ```
 
 ## GitHub Tag 自动发布（macOS + Windows）
@@ -74,14 +74,16 @@ dotnet publish Tomato.WindowsGui/Tomato.WindowsGui.csproj \
   -c Release \
   -r win-x64 \
   --self-contained true \
+  -o build/windows-release \
   /p:PublishSingleFile=true \
+  /p:IncludeAllContentForSelfExtract=true \
   /p:DebugType=None \
   /p:DebugSymbols=false
 ```
 
 默认产物：
 
-`Tomato.WindowsGui/bin/Release/net10.0-windows/win-x64/publish/Tomato.WindowsGui.exe`
+`build/windows-release/Tomato.WindowsGui.exe`
 
 ## 使用文档
 

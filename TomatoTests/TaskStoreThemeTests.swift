@@ -56,7 +56,7 @@ final class TaskStoreThemeTests: XCTestCase {
         store.stopTimer()
     }
 
-    func test_timer_display_task_tracks_selection_after_timer_stops() {
+    func test_timer_display_task_tracks_selection_after_timer_resets() {
         UserDefaults.standard.removeObject(forKey: "tasks")
 
         let store = TaskStore()
@@ -69,8 +69,69 @@ final class TaskStoreThemeTests: XCTestCase {
         store.selectTask(taskA)
         store.startFocusSession()
         store.selectTask(taskB)
-        store.stopTimer()
+        store.resetTimer()
 
         XCTAssertEqual(store.timerDisplayTask?.id, taskB.id)
+    }
+
+    func test_start_focus_after_stop_resumes_remaining_time_without_reset() {
+        UserDefaults.standard.removeObject(forKey: "tasks")
+
+        let store = TaskStore()
+        store.addTask(title: "Task A")
+        let taskA = store.tasks[0]
+
+        store.selectTask(taskA)
+        store.startFocusSession()
+
+        store.remainingSeconds = store.workDuration - 30
+        let pausedRemaining = store.remainingSeconds
+        store.stopTimer()
+
+        store.startFocusSession()
+
+        XCTAssertTrue(store.isTimerRunning)
+        XCTAssertEqual(store.remainingSeconds, pausedRemaining)
+        XCTAssertEqual(store.currentPhase, .work)
+        XCTAssertEqual(store.timerDisplayTask?.id, taskA.id)
+        store.stopTimer()
+    }
+
+    func test_focus_control_state_is_focus_when_session_not_started() {
+        UserDefaults.standard.removeObject(forKey: "tasks")
+
+        let store = TaskStore()
+        store.addTask(title: "Task A")
+        store.selectTask(store.tasks[0])
+
+        XCTAssertEqual(store.focusControlState, .focus)
+    }
+
+    func test_focus_control_state_transitions_from_pause_to_run_for_resumable_session() {
+        UserDefaults.standard.removeObject(forKey: "tasks")
+
+        let store = TaskStore()
+        store.addTask(title: "Task A")
+        store.selectTask(store.tasks[0])
+
+        store.startFocusSession()
+        XCTAssertEqual(store.focusControlState, .pause)
+
+        store.stopTimer()
+        XCTAssertEqual(store.focusControlState, .run)
+    }
+
+    func test_focus_control_state_returns_to_focus_after_reset() {
+        UserDefaults.standard.removeObject(forKey: "tasks")
+
+        let store = TaskStore()
+        store.addTask(title: "Task A")
+        store.selectTask(store.tasks[0])
+        store.startFocusSession()
+        store.stopTimer()
+
+        store.resetTimer()
+
+        XCTAssertEqual(store.focusControlState, .focus)
     }
 }

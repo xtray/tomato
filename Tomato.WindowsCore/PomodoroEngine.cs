@@ -54,6 +54,14 @@ public sealed class PomodoroEngine
             throw new ArgumentOutOfRangeException(nameof(longBreakMinutes), "Long break minutes must be greater than 0.");
         }
 
+        if (!_isRunning &&
+            _remainingSeconds > 0 &&
+            _phase is PomodoroPhase.Work or PomodoroPhase.ShortBreak or PomodoroPhase.LongBreak)
+        {
+            _isRunning = true;
+            return;
+        }
+
         _workSeconds = workMinutes * 60;
         _shortBreakSeconds = shortBreakMinutes * 60;
         _longBreakSeconds = longBreakMinutes * 60;

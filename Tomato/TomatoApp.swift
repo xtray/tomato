@@ -26,7 +26,7 @@ struct TomatoApp: App {
                     taskStore.startFocusSession()
                 }
                 .keyboardShortcut("s", modifiers: [.command])
-                .disabled(taskStore.selectedTask == nil)
+                .disabled(!taskStore.canStartOrResumeFocus)
                 
                 Button(AppText.string("common.stop", language: commandsLanguage)) {
                     taskStore.stopTimer()

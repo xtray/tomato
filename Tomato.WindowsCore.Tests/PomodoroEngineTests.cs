@@ -85,4 +85,26 @@ public class PomodoroEngineTests
         Assert.Equal(60, state.RemainingSeconds);
         Assert.False(state.IsRunning);
     }
+
+    [Fact]
+    public void StartFocusSession_WhenPaused_ResumesWithoutResettingRemainingSeconds()
+    {
+        var engine = new PomodoroEngine();
+        engine.StartFocusSession(workMinutes: 2, shortBreakMinutes: 1, longBreakMinutes: 2);
+
+        for (var i = 0; i < 15; i++)
+        {
+            engine.Tick();
+        }
+
+        var pausedRemaining = engine.Snapshot.RemainingSeconds;
+        engine.StopSession();
+
+        engine.StartFocusSession(workMinutes: 2, shortBreakMinutes: 1, longBreakMinutes: 2);
+
+        var resumed = engine.Snapshot;
+        Assert.Equal(PomodoroPhase.Work, resumed.Phase);
+        Assert.Equal(pausedRemaining, resumed.RemainingSeconds);
+        Assert.True(resumed.IsRunning);
+    }
 }

@@ -31,19 +31,22 @@ jobs:
 
       - name: Build Release app
         run: |
+          DERIVED_DATA_PATH="$GITHUB_WORKSPACE/build/release"
+          rm -rf "$DERIVED_DATA_PATH"
+          mkdir -p "$DERIVED_DATA_PATH"
           xcodebuild \
             -project Tomato.xcodeproj \
             -scheme Tomato \
             -configuration Release \
             -sdk macosx \
-            -derivedDataPath "$RUNNER_TEMP/TomatoDerivedData" \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             build
 
       - name: Package app bundle
         run: |
-          APP_PATH="$RUNNER_TEMP/TomatoDerivedData/Build/Products/Release/Tomato.app"
+          APP_PATH="$GITHUB_WORKSPACE/build/release/Build/Products/Release/Tomato.app"
           VERSION="${GITHUB_REF_NAME}"
           ZIP_NAME="Tomato-${VERSION}-macOS.zip"
 
@@ -86,6 +89,7 @@ jobs:
             --self-contained true `
             /p:PublishSingleFile=true `
             /p:IncludeNativeLibrariesForSelfExtract=true `
+            /p:IncludeAllContentForSelfExtract=true `
             /p:DebugType=None `
             /p:DebugSymbols=false `
             -o $outDir

@@ -152,7 +152,7 @@ struct FloatingTimerContentView: View {
                 }
 
                 HStack(spacing: 8) {
-                    if taskStore.isTimerRunning {
+                    if taskStore.focusControlState == .pause {
                         Button {
                             taskStore.stopTimer()
                         } label: {
@@ -166,6 +166,7 @@ struct FloatingTimerContentView: View {
                             Image(systemName: "play.fill")
                         }
                         .buttonStyle(PrimaryGlassButtonStyle(mode: mode))
+                        .disabled(!taskStore.canStartOrResumeFocus)
                     }
 
                     Button {
