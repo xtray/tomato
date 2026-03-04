@@ -724,6 +724,13 @@ internal sealed class MainForm : Form
 
     private void ShowFloatingFocusWindow()
     {
+        if (_floatingForm is { IsDisposed: false })
+        {
+            _floatingForm.Close();
+            _floatingForm.Dispose();
+            _floatingForm = null;
+        }
+
         if (_floatingForm is null || _floatingForm.IsDisposed)
         {
             _floatingForm = new FloatingFocusForm(
@@ -731,10 +738,12 @@ internal sealed class MainForm : Form
                 onFocusToggle: HandleFocusButton,
                 onReset: ResetTimer,
                 initialSize: _floatingWindowSize,
+                initialThemeMode: _themeMode,
                 onResizeCommitted: HandleFloatingWindowResizeCommitted
             );
         }
 
+        _floatingForm.SetThemeMode(_themeMode);
         UpdateFloatingWindow();
         PositionFloatingWindow(_floatingForm);
 
@@ -745,15 +754,32 @@ internal sealed class MainForm : Form
 
     private void RestoreMainWindow()
     {
+        if (WindowState == FormWindowState.Minimized)
+        {
+            WindowState = FormWindowState.Normal;
+        }
+
+        if (!Visible)
+        {
+            Show();
+        }
+
+        BringToFront();
+        Activate();
+
         if (_floatingForm is { IsDisposed: false })
         {
             _floatingForm.Hide();
         }
 
-        RefreshView();
-        Show();
-        WindowState = FormWindowState.Normal;
-        Activate();
+        BeginInvoke((Action)(() =>
+        {
+            if (IsDisposed)
+            {
+                return;
+            }
+            RefreshView();
+        }));
     }
 
     private static void PositionFloatingWindow(Form floatingForm)
@@ -1257,6 +1283,7 @@ internal sealed class FloatingFocusForm : Form
         Action onFocusToggle,
         Action onReset,
         Size initialSize,
+        WindowsThemeMode initialThemeMode,
         Action<Size>? onResizeCommitted = null
     )
     {
@@ -1359,6 +1386,7 @@ internal sealed class FloatingFocusForm : Form
 
         SizeChanged += (_, _) => ApplyRoundedWindowRegion();
         ApplyRoundedWindowRegion();
+        SetThemeMode(initialThemeMode);
         EnableDrag(this);
         DpiChanged += OnDpiChanged;
         MouseCaptureChanged += OnFloatingMouseCaptureChanged;

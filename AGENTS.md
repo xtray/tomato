@@ -28,5 +28,6 @@ Requirements:
 After **any** Windows-related code change (including `Tomato.WindowsGui`, `Tomato.WindowsCore`, or Windows-specific build/runtime config), you must re-run the Windows release publish step immediately using the exact command above.
 
 Additional requirements:
+- This is the default automatic workflow for this repository after Windows-related edits (do not wait for a separate reminder).
 - Do not claim the Windows change is complete until the rebuild command exits successfully.
 - The rebuilt output must be written to `build/windows-release`.
