@@ -4,6 +4,7 @@ import Foundation
 enum ThemeMode: String, CaseIterable, Codable, Equatable {
     case glassVivid
     case businessMotion
+    case verdantCalm
 
     func displayName(language: AppLanguage) -> String {
         switch self {
@@ -11,6 +12,8 @@ enum ThemeMode: String, CaseIterable, Codable, Equatable {
             return AppText.string("theme.mode.glass_vivid", language: language)
         case .businessMotion:
             return AppText.string("theme.mode.business_motion", language: language)
+        case .verdantCalm:
+            return AppText.string("theme.mode.verdant_calm", language: language)
         }
     }
 }
@@ -39,6 +42,10 @@ enum AppTheme {
         static let businessPrimary = Color(red: 0.20, green: 0.25, blue: 0.31)
         static let businessSecondary = Color(red: 0.33, green: 0.40, blue: 0.48)
         static let businessAccent = Color(red: 0.32, green: 0.54, blue: 0.58)
+        static let verdantPrimary = Color(red: 0.24, green: 0.54, blue: 0.43)
+        static let verdantSecondary = Color(red: 0.34, green: 0.63, blue: 0.49)
+        static let verdantAccent = Color(red: 0.47, green: 0.71, blue: 0.55)
+        static let verdantLongBreak = Color(red: 0.39, green: 0.60, blue: 0.46)
 
         static let textPrimary = Color.primary
         static let textSecondary = Color.secondary
@@ -56,6 +63,8 @@ enum AppTheme {
                 return textPrimary
             case .businessMotion:
                 return Color(red: 0.16, green: 0.20, blue: 0.25)
+            case .verdantCalm:
+                return Color(red: 0.15, green: 0.24, blue: 0.19)
             }
         }
 
@@ -65,6 +74,8 @@ enum AppTheme {
                 return textSecondary
             case .businessMotion:
                 return Color(red: 0.39, green: 0.44, blue: 0.50)
+            case .verdantCalm:
+                return Color(red: 0.34, green: 0.43, blue: 0.38)
             }
         }
 
@@ -74,6 +85,8 @@ enum AppTheme {
                 return tomatoPrimary
             case .businessMotion:
                 return businessPrimary
+            case .verdantCalm:
+                return verdantPrimary
             }
         }
 
@@ -83,6 +96,8 @@ enum AppTheme {
                 return tomatoSecondary
             case .businessMotion:
                 return businessSecondary
+            case .verdantCalm:
+                return verdantSecondary
             }
         }
 
@@ -92,6 +107,8 @@ enum AppTheme {
                 return accentMint
             case .businessMotion:
                 return businessAccent
+            case .verdantCalm:
+                return verdantAccent
             }
         }
 
@@ -101,6 +118,8 @@ enum AppTheme {
                 return Color.white.opacity(0.32)
             case .businessMotion:
                 return Color.white.opacity(0.26)
+            case .verdantCalm:
+                return Color.white.opacity(0.30)
             }
         }
 
@@ -110,6 +129,8 @@ enum AppTheme {
                 return ringGlow
             case .businessMotion:
                 return Color.white.opacity(0.34)
+            case .verdantCalm:
+                return Color.white.opacity(0.40)
             }
         }
 
@@ -119,6 +140,8 @@ enum AppTheme {
                 return Color.white.opacity(0.45)
             case .businessMotion:
                 return Color.white.opacity(0.56)
+            case .verdantCalm:
+                return Color(red: 0.92, green: 0.97, blue: 0.92).opacity(0.74)
             }
         }
 
@@ -128,6 +151,8 @@ enum AppTheme {
                 return Color.white.opacity(0.55)
             case .businessMotion:
                 return Color.white.opacity(0.70)
+            case .verdantCalm:
+                return Color(red: 0.77, green: 0.86, blue: 0.78).opacity(0.82)
             }
         }
 
@@ -137,6 +162,8 @@ enum AppTheme {
                 return tint.opacity(0.15)
             case .businessMotion:
                 return tint.opacity(0.18)
+            case .verdantCalm:
+                return tint.opacity(0.20)
             }
         }
 
@@ -146,6 +173,8 @@ enum AppTheme {
                 return Color.white.opacity(isPressed ? 0.28 : 0.38)
             case .businessMotion:
                 return Color.white.opacity(isPressed ? 0.42 : 0.52)
+            case .verdantCalm:
+                return Color(red: 0.93, green: 0.97, blue: 0.93).opacity(isPressed ? 0.82 : 0.90)
             }
         }
 
@@ -155,11 +184,20 @@ enum AppTheme {
                 return Color.white.opacity(0.45)
             case .businessMotion:
                 return Color.white.opacity(0.62)
+            case .verdantCalm:
+                return Color(red: 0.74, green: 0.84, blue: 0.75).opacity(0.92)
             }
         }
 
         static func selectionFill(for mode: ThemeMode) -> Color {
-            tomatoPrimary(for: mode).opacity(mode == .glassVivid ? 0.14 : 0.12)
+            switch mode {
+            case .glassVivid:
+                return tomatoPrimary(for: mode).opacity(0.14)
+            case .businessMotion:
+                return tomatoPrimary(for: mode).opacity(0.12)
+            case .verdantCalm:
+                return tomatoPrimary(for: mode).opacity(0.18)
+            }
         }
 
         static func orbPrimary(for mode: ThemeMode) -> Color {
@@ -168,6 +206,8 @@ enum AppTheme {
                 return tomatoPrimary.opacity(0.18)
             case .businessMotion:
                 return businessPrimary.opacity(0.19)
+            case .verdantCalm:
+                return verdantPrimary.opacity(0.20)
             }
         }
 
@@ -177,6 +217,8 @@ enum AppTheme {
                 return accentMint.opacity(0.16)
             case .businessMotion:
                 return businessAccent.opacity(0.15)
+            case .verdantCalm:
+                return verdantAccent.opacity(0.17)
             }
         }
 
@@ -186,6 +228,8 @@ enum AppTheme {
                 return phaseWork
             case .businessMotion:
                 return businessPrimary
+            case .verdantCalm:
+                return verdantPrimary
             }
         }
 
@@ -195,6 +239,8 @@ enum AppTheme {
                 return phaseShortBreak
             case .businessMotion:
                 return businessAccent
+            case .verdantCalm:
+                return verdantAccent
             }
         }
 
@@ -204,6 +250,8 @@ enum AppTheme {
                 return phaseLongBreak
             case .businessMotion:
                 return Color(red: 0.24, green: 0.37, blue: 0.57)
+            case .verdantCalm:
+                return verdantLongBreak
             }
         }
     }
@@ -243,6 +291,12 @@ enum AppTheme {
                     .init(color: Color(red: 0.91, green: 0.93, blue: 0.95), location: 0.5),
                     .init(color: Color(red: 0.96, green: 0.97, blue: 0.98), location: 1.0)
                 ])
+            case .verdantCalm:
+                return Gradient(stops: [
+                    .init(color: Color(red: 0.95, green: 0.98, blue: 0.95), location: 0.0),
+                    .init(color: Color(red: 0.90, green: 0.95, blue: 0.90), location: 0.5),
+                    .init(color: Color(red: 0.94, green: 0.98, blue: 0.94), location: 1.0)
+                ])
             }
         }
 
@@ -259,6 +313,15 @@ enum AppTheme {
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
+            case .verdantCalm:
+                return LinearGradient(
+                    colors: [
+                        Color(red: 0.96, green: 0.99, blue: 0.96).opacity(0.84),
+                        Color(red: 0.92, green: 0.97, blue: 0.92).opacity(0.72)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
             }
         }
 
@@ -271,6 +334,15 @@ enum AppTheme {
                     colors: [
                         Color.white.opacity(0.92),
                         Color.white.opacity(0.44)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            case .verdantCalm:
+                return LinearGradient(
+                    colors: [
+                        Color(red: 0.96, green: 0.99, blue: 0.96).opacity(0.92),
+                        Color(red: 0.78, green: 0.88, blue: 0.79).opacity(0.52)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
@@ -295,6 +367,8 @@ enum AppTheme {
                 return Color.black.opacity(0.12)
             case .businessMotion:
                 return Color.black.opacity(0.16)
+            case .verdantCalm:
+                return Color.black.opacity(0.11)
             }
         }
 
@@ -304,6 +378,8 @@ enum AppTheme {
                 return 16
             case .businessMotion:
                 return 20
+            case .verdantCalm:
+                return 17
             }
         }
 
@@ -313,6 +389,8 @@ enum AppTheme {
                 return 8
             case .businessMotion:
                 return 10
+            case .verdantCalm:
+                return 8
             }
         }
     }
@@ -336,6 +414,8 @@ enum AppTheme {
                 return .easeOut(duration: 0.12)
             case .businessMotion:
                 return .spring(response: 0.25, dampingFraction: 0.78)
+            case .verdantCalm:
+                return .easeInOut(duration: 0.16)
             }
         }
 
@@ -345,6 +425,8 @@ enum AppTheme {
                 return 10
             case .businessMotion:
                 return 6
+            case .verdantCalm:
+                return 8
             }
         }
 
@@ -354,6 +436,8 @@ enum AppTheme {
                 return 20
             case .businessMotion:
                 return 34
+            case .verdantCalm:
+                return 24
             }
         }
 
@@ -363,6 +447,8 @@ enum AppTheme {
                 return 0.02
             case .businessMotion:
                 return 0.05
+            case .verdantCalm:
+                return 0.03
             }
         }
     }

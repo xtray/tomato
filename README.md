@@ -76,6 +76,8 @@ dotnet publish Tomato.WindowsGui/Tomato.WindowsGui.csproj \
   --self-contained true \
   -o build/windows-release \
   /p:PublishSingleFile=true \
+  /p:EnableCompressionInSingleFile=true \
+  /p:IncludeNativeLibrariesForSelfExtract=true \
   /p:IncludeAllContentForSelfExtract=true \
   /p:DebugType=None \
   /p:DebugSymbols=false
@@ -101,6 +103,7 @@ dotnet publish Tomato.WindowsGui/Tomato.WindowsGui.csproj \
    - `播放/暂停`
    - `重置`
    - `返回主窗口`
+   - 仅可通过窗口左下角热区拖动缩放（无可视化拖拽标记）
 
 ### 3. 番茄钟阶段规则
 

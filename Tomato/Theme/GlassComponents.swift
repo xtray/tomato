@@ -3,11 +3,21 @@ import SwiftUI
 struct GlassCard<Content: View>: View {
     let mode: ThemeMode
     let padding: CGFloat
+    let showsStroke: Bool
+    let showsShadow: Bool
     @ViewBuilder var content: Content
 
-    init(mode: ThemeMode, padding: CGFloat = AppTheme.Spacing.md, @ViewBuilder content: () -> Content) {
+    init(
+        mode: ThemeMode,
+        padding: CGFloat = AppTheme.Spacing.md,
+        showsStroke: Bool = true,
+        showsShadow: Bool = true,
+        @ViewBuilder content: () -> Content
+    ) {
         self.mode = mode
         self.padding = padding
+        self.showsStroke = showsStroke
+        self.showsShadow = showsShadow
         self.content = content()
     }
 
@@ -15,16 +25,18 @@ struct GlassCard<Content: View>: View {
         content
             .padding(padding)
             .background(AppTheme.Backgrounds.cardFill(for: mode))
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.card, style: .continuous)
-                    .stroke(AppTheme.Backgrounds.cardStroke(for: mode), lineWidth: 1)
-            )
+            .overlay {
+                if showsStroke {
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.card, style: .continuous)
+                        .stroke(AppTheme.Backgrounds.cardStroke(for: mode), lineWidth: 1)
+                }
+            }
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.card, style: .continuous))
             .shadow(
-                color: AppTheme.Shadow.card(for: mode),
-                radius: AppTheme.Shadow.cardRadius(for: mode),
+                color: showsShadow ? AppTheme.Shadow.card(for: mode) : .clear,
+                radius: showsShadow ? AppTheme.Shadow.cardRadius(for: mode) : 0,
                 x: 0,
-                y: AppTheme.Shadow.cardY(for: mode)
+                y: showsShadow ? AppTheme.Shadow.cardY(for: mode) : 0
             )
     }
 }

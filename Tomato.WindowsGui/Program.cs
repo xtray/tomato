@@ -32,6 +32,7 @@ internal sealed class MainForm : Form
     private const int MainWindowCornerRadius = 24;
 
     private readonly PomodoroEngine _engine = new();
+    private readonly WindowsAppStateStore _stateStore = new(WindowsAppStateStore.DefaultPath());
     private readonly System.Windows.Forms.Timer _tickTimer = new() { Interval = 1000 };
     private FloatingFocusForm? _floatingForm;
 
@@ -41,6 +42,10 @@ internal sealed class MainForm : Form
     private int _workMinutes = 25;
     private int _shortBreakMinutes = 5;
     private int _longBreakMinutes = 15;
+    private Size _floatingWindowSize = new(
+        WindowsAppState.DefaultFloatingWindowWidth,
+        WindowsAppState.DefaultFloatingWindowHeight
+    );
 
     private readonly GradientBackgroundPanel _background = new() { Dock = DockStyle.Fill };
     private readonly Panel _titleBar = new()
@@ -75,9 +80,17 @@ internal sealed class MainForm : Form
         IntegralHeight = false,
         DrawMode = DrawMode.OwnerDrawFixed,
         ItemHeight = 76,
-        BackColor = Color.White
+        BackColor = Color.FromArgb(250, 252, 254)
     };
-    private bool _lastTaskListCoolTheme;
+    private readonly Panel _taskListWrap = new()
+    {
+        Dock = DockStyle.Fill,
+        BackColor = Color.FromArgb(250, 252, 254),
+        Padding = new Padding(0, 6, 0, 6),
+        Margin = new Padding(0, 10, 0, 10)
+    };
+    private WindowsThemeMode _themeMode = WindowsThemeMode.WarmVivid;
+    private WindowsThemeMode _lastTaskListThemeMode = WindowsThemeMode.WarmVivid;
 
     private readonly TextBox _newTaskInput = new()
     {
@@ -116,6 +129,8 @@ internal sealed class MainForm : Form
 
     public MainForm()
     {
+        LoadPersistedState();
+
         Text = string.Empty;
         Icon = AppIconProvider.GetAppIcon();
         FormBorderStyle = FormBorderStyle.None;
@@ -146,7 +161,9 @@ internal sealed class MainForm : Form
         _closeWindowButton.Margin = new Padding(6, 0, 0, 0);
 
         _tickTimer.Tick += OnTick;
+        _taskListWrap.Controls.Add(_taskList);
 
+        _background.ThemeMode = _themeMode;
         _background.Controls.Add(BuildLayout());
         Controls.Add(_background);
         SizeChanged += (_, _) => ApplyRoundedWindowRegion();
@@ -154,15 +171,18 @@ internal sealed class MainForm : Form
 
         FormClosing += (_, _) =>
         {
+            SavePersistedState();
             if (_floatingForm is { IsDisposed: false })
             {
                 _floatingForm.Close();
             }
         };
 
-        _tasks.Add(new WinTask("My First Task"));
         RefreshTaskList();
-        _taskList.SelectedIndex = 0;
+        if (_tasks.Count > 0)
+        {
+            _taskList.SelectedIndex = 0;
+        }
         RefreshView();
     }
 
@@ -263,7 +283,9 @@ internal sealed class MainForm : Form
         var themeButton = CreateMiniButton("Theme");
         themeButton.Click += (_, _) =>
         {
-            _background.IsCoolTheme = !_background.IsCoolTheme;
+            _themeMode = WindowsThemeCatalog.Next(_themeMode);
+            _background.ThemeMode = _themeMode;
+            SavePersistedState();
             RefreshView();
         };
 
@@ -274,15 +296,6 @@ internal sealed class MainForm : Form
         header.Controls.Add(_taskCountBadge, 1, 0);
         header.Controls.Add(themeButton, 2, 0);
         header.Controls.Add(settingsButton, 3, 0);
-
-        var listWrap = new Panel
-        {
-            Dock = DockStyle.Fill,
-            BackColor = Color.White,
-            Padding = new Padding(0, 6, 0, 6),
-            Margin = new Padding(0, 10, 0, 10)
-        };
-        listWrap.Controls.Add(_taskList);
 
         var footer = new TableLayoutPanel
         {
@@ -316,7 +329,7 @@ internal sealed class MainForm : Form
         footer.Controls.Add(deleteButton, 2, 0);
 
         layout.Controls.Add(header, 0, 0);
-        layout.Controls.Add(listWrap, 0, 1);
+        layout.Controls.Add(_taskListWrap, 0, 1);
         layout.Controls.Add(footer, 0, 2);
 
         card.Controls.Add(layout);
@@ -613,6 +626,7 @@ internal sealed class MainForm : Form
         _newTaskInput.Text = string.Empty;
         RefreshTaskList();
         _taskList.SelectedIndex = _tasks.Count - 1;
+        SavePersistedState();
         RefreshView();
     }
 
@@ -635,6 +649,7 @@ internal sealed class MainForm : Form
         {
             _taskList.SelectedIndex = Math.Min(_taskList.SelectedIndex, _tasks.Count - 1);
         }
+        SavePersistedState();
         RefreshView();
     }
 
@@ -714,7 +729,9 @@ internal sealed class MainForm : Form
             _floatingForm = new FloatingFocusForm(
                 onBackToMain: RestoreMainWindow,
                 onFocusToggle: HandleFocusButton,
-                onReset: ResetTimer
+                onReset: ResetTimer,
+                initialSize: _floatingWindowSize,
+                onResizeCommitted: HandleFloatingWindowResizeCommitted
             );
         }
 
@@ -750,7 +767,7 @@ internal sealed class MainForm : Form
 
     private void OpenSettings()
     {
-        using var dialog = new SettingsForm(_workMinutes, _shortBreakMinutes, _longBreakMinutes);
+        using var dialog = new SettingsForm(_workMinutes, _shortBreakMinutes, _longBreakMinutes, _themeMode);
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
             return;
@@ -759,6 +776,7 @@ internal sealed class MainForm : Form
         _workMinutes = dialog.WorkMinutes;
         _shortBreakMinutes = dialog.ShortBreakMinutes;
         _longBreakMinutes = dialog.LongBreakMinutes;
+        SavePersistedState();
 
         if (_engine.Snapshot.Phase == PomodoroPhase.Idle)
         {
@@ -811,6 +829,63 @@ internal sealed class MainForm : Form
             return;
         }
         task.CompletedPomodoros += 1;
+        SavePersistedState();
+    }
+
+    private void LoadPersistedState()
+    {
+        var state = _stateStore.Load();
+        _themeMode = state.ThemeMode;
+        _lastTaskListThemeMode = state.ThemeMode;
+        _workMinutes = state.WorkMinutes;
+        _shortBreakMinutes = state.ShortBreakMinutes;
+        _longBreakMinutes = state.LongBreakMinutes;
+        _floatingWindowSize = new Size(state.FloatingWindowWidth, state.FloatingWindowHeight);
+
+        _tasks.Clear();
+        foreach (var task in state.Tasks)
+        {
+            _tasks.Add(new WinTask(task.Id, task.Title, task.CompletedPomodoros));
+        }
+    }
+
+    private void SavePersistedState()
+    {
+        var state = new WindowsAppState
+        {
+            ThemeMode = _themeMode,
+            WorkMinutes = _workMinutes,
+            ShortBreakMinutes = _shortBreakMinutes,
+            LongBreakMinutes = _longBreakMinutes,
+            FloatingWindowWidth = _floatingWindowSize.Width,
+            FloatingWindowHeight = _floatingWindowSize.Height,
+            Tasks = _tasks
+                .Select(task => new WindowsTaskState
+                {
+                    Id = task.Id,
+                    Title = task.Title,
+                    CompletedPomodoros = task.CompletedPomodoros
+                })
+                .ToList()
+        };
+
+        _stateStore.Save(state);
+    }
+
+    private void HandleFloatingWindowResizeCommitted(Size size)
+    {
+        var normalized = new Size(
+            Math.Clamp(size.Width, WindowsAppState.MinFloatingWindowWidth, WindowsAppState.MaxFloatingWindowWidth),
+            Math.Clamp(size.Height, WindowsAppState.MinFloatingWindowHeight, WindowsAppState.MaxFloatingWindowHeight)
+        );
+
+        if (_floatingWindowSize == normalized)
+        {
+            return;
+        }
+
+        _floatingWindowSize = normalized;
+        SavePersistedState();
     }
 
     private WinTask? GetSelectedTask()
@@ -857,22 +932,25 @@ internal sealed class MainForm : Form
         };
 
         var phaseColor = GetPhaseColor(snapshot.Phase);
-        var useBusinessTheme = _background.IsCoolTheme;
+        var themeMode = _themeMode;
         var workAccent = GetPhaseColor(PomodoroPhase.Work);
+        var taskRowBaseColor = GetTaskRowBaseColor();
 
-        ApplyWindowChromeTheme(useBusinessTheme);
-        ApplyThemeToButtonTree(this, useBusinessTheme);
+        ApplyWindowChromeTheme(themeMode);
+        ApplyThemeToButtonTree(this, themeMode);
         if (_floatingForm is { IsDisposed: false })
         {
-            _floatingForm.SetBusinessTheme(useBusinessTheme);
+            _floatingForm.SetThemeMode(themeMode);
         }
 
         _taskCountBadge.ForeColor = workAccent;
-        _taskCountBadge.BackColor = CreateTagBackground(workAccent, useBusinessTheme);
+        _taskCountBadge.BackColor = CreateTagBackground(workAccent, themeMode);
 
         _phaseLabel.Text = phaseText;
         _phaseLabel.ForeColor = phaseColor;
-        _phaseLabel.BackColor = CreateTagBackground(phaseColor, useBusinessTheme);
+        _phaseLabel.BackColor = CreateTagBackground(phaseColor, themeMode);
+        _taskListWrap.BackColor = taskRowBaseColor;
+        _taskList.BackColor = taskRowBaseColor;
 
         var totalSeconds = isIdle ? _workMinutes * 60 : Math.Max(1, snapshot.PhaseTotalSeconds);
         var remainingSeconds = isIdle ? _workMinutes * 60 : Math.Max(0, snapshot.RemainingSeconds);
@@ -886,10 +964,10 @@ internal sealed class MainForm : Form
         _focusButton.Enabled = selectedTask is not null || isRunning || hasResumableSession;
         _resetButton.Enabled = !isIdle || displayTask is not null;
         _floatButton.Enabled = isRunning || hasResumableSession;
-        if (_lastTaskListCoolTheme != useBusinessTheme)
+        if (_lastTaskListThemeMode != themeMode)
         {
             _taskList.Invalidate();
-            _lastTaskListCoolTheme = useBusinessTheme;
+            _lastTaskListThemeMode = themeMode;
         }
 
         UpdateFloatingWindow();
@@ -917,7 +995,7 @@ internal sealed class MainForm : Form
             phaseColor: GetPhaseColor(snapshot.Phase),
             fallbackWorkSeconds: _workMinutes * 60,
             hasSessionTask: _sessionTaskId.HasValue,
-            useBusinessTheme: _background.IsCoolTheme
+            themeMode: _themeMode
         );
     }
 
@@ -938,33 +1016,55 @@ internal sealed class MainForm : Form
 
     private Color GetPhaseColor(PomodoroPhase phase)
     {
-        var business = _background.IsCoolTheme;
-        return phase switch
+        var accents = WindowsThemeCatalog.PhaseAccents(_themeMode);
+        var rgb = phase switch
         {
-            PomodoroPhase.Work => business ? UiPalette.BusinessPrimary : UiPalette.Primary,
-            PomodoroPhase.ShortBreak => business ? UiPalette.BusinessAccent : UiPalette.ShortBreak,
-            PomodoroPhase.LongBreak => business ? UiPalette.BusinessLongBreak : UiPalette.LongBreak,
-            _ => business ? UiPalette.BusinessPrimary : UiPalette.Primary
+            PomodoroPhase.Work => accents.Work,
+            PomodoroPhase.ShortBreak => accents.ShortBreak,
+            PomodoroPhase.LongBreak => accents.LongBreak,
+            _ => accents.Work
         };
+
+        return Color.FromArgb(rgb.R, rgb.G, rgb.B);
     }
 
-    private void ApplyWindowChromeTheme(bool useBusinessTheme)
+    private static Color ColorFromRgb(RgbAccent accent)
     {
-        var titleBarBackground = useBusinessTheme
-            ? Color.FromArgb(229, 237, 246)
-            : Color.FromArgb(255, 238, 230);
-        var buttonForeground = useBusinessTheme
-            ? UiPalette.TextPrimary
-            : UiPalette.Primary;
-        var minHoverBackground = useBusinessTheme
-            ? Color.FromArgb(214, 225, 238)
-            : Color.FromArgb(252, 226, 219);
-        var closeHoverBackground = useBusinessTheme
-            ? Color.FromArgb(233, 206, 205)
-            : Color.FromArgb(247, 205, 197);
-        var pressedBackground = useBusinessTheme
-            ? Color.FromArgb(198, 211, 226)
-            : Color.FromArgb(239, 191, 181);
+        return Color.FromArgb(accent.R, accent.G, accent.B);
+    }
+
+    private void ApplyWindowChromeTheme(WindowsThemeMode themeMode)
+    {
+        var titleBarBackground = themeMode switch
+        {
+            WindowsThemeMode.BusinessMotion => Color.FromArgb(229, 237, 246),
+            WindowsThemeMode.GreenFocus => Color.FromArgb(225, 239, 230),
+            _ => Color.FromArgb(255, 238, 230)
+        };
+        var buttonForeground = themeMode switch
+        {
+            WindowsThemeMode.BusinessMotion => UiPalette.TextPrimary,
+            WindowsThemeMode.GreenFocus => UiPalette.GreenPrimary,
+            _ => UiPalette.Primary
+        };
+        var minHoverBackground = themeMode switch
+        {
+            WindowsThemeMode.BusinessMotion => Color.FromArgb(214, 225, 238),
+            WindowsThemeMode.GreenFocus => Color.FromArgb(206, 225, 212),
+            _ => Color.FromArgb(252, 226, 219)
+        };
+        var closeHoverBackground = themeMode switch
+        {
+            WindowsThemeMode.BusinessMotion => Color.FromArgb(233, 206, 205),
+            WindowsThemeMode.GreenFocus => Color.FromArgb(213, 230, 219),
+            _ => Color.FromArgb(247, 205, 197)
+        };
+        var pressedBackground = themeMode switch
+        {
+            WindowsThemeMode.BusinessMotion => Color.FromArgb(198, 211, 226),
+            WindowsThemeMode.GreenFocus => Color.FromArgb(188, 211, 195),
+            _ => Color.FromArgb(239, 191, 181)
+        };
 
         _titleBar.BackColor = titleBarBackground;
         _windowControlHost.BackColor = titleBarBackground;
@@ -972,11 +1072,16 @@ internal sealed class MainForm : Form
         ConfigureWindowControlButton(_closeWindowButton, buttonForeground, closeHoverBackground, pressedBackground);
     }
 
-    private static Color CreateTagBackground(Color accent, bool useBusinessTheme)
+    private static Color CreateTagBackground(Color accent, WindowsThemeMode themeMode)
     {
         static int Mix(int from, int to, float t) => (int)Math.Clamp(MathF.Round(from + (to - from) * t), 0, 255);
 
-        var strength = useBusinessTheme ? 0.12F : 0.18F;
+        var strength = themeMode switch
+        {
+            WindowsThemeMode.BusinessMotion => 0.12F,
+            WindowsThemeMode.GreenFocus => 0.16F,
+            _ => 0.18F
+        };
         return Color.FromArgb(
             255,
             Mix(255, accent.R, strength),
@@ -985,20 +1090,53 @@ internal sealed class MainForm : Form
         );
     }
 
-    private static void ApplyThemeToButtonTree(Control root, bool useBusinessTheme)
+    private static void ApplyThemeToButtonTree(Control root, WindowsThemeMode themeMode)
     {
         foreach (Control control in root.Controls)
         {
             if (control is GlassActionButton button)
             {
-                button.UseBusinessTheme = useBusinessTheme;
+                button.ThemeMode = themeMode;
+            }
+            else if (control is GlassCardPanel card)
+            {
+                card.ThemeMode = themeMode;
+            }
+            else if (control is TimerRingControl ring)
+            {
+                ring.ThemeMode = themeMode;
             }
 
             if (control.HasChildren)
             {
-                ApplyThemeToButtonTree(control, useBusinessTheme);
+                ApplyThemeToButtonTree(control, themeMode);
             }
         }
+    }
+
+    private Color GetTaskRowSelectedColor()
+    {
+        return _themeMode switch
+        {
+            WindowsThemeMode.BusinessMotion => Color.FromArgb(236, 242, 248),
+            WindowsThemeMode.GreenFocus => Color.FromArgb(230, 240, 233),
+            _ => Color.FromArgb(249, 236, 233)
+        };
+    }
+
+    private Color GetTaskRowBaseColor()
+    {
+        return _themeMode switch
+        {
+            WindowsThemeMode.BusinessMotion => Color.FromArgb(246, 249, 252),
+            WindowsThemeMode.GreenFocus => Color.FromArgb(239, 246, 241),
+            _ => Color.FromArgb(250, 252, 254)
+        };
+    }
+
+    private Color GetTaskSelectionDotColor()
+    {
+        return ColorFromRgb(WindowsThemeCatalog.PhaseAccents(_themeMode).Work);
     }
 
     private void OnDrawTaskItem(object? sender, DrawItemEventArgs e)
@@ -1018,10 +1156,9 @@ internal sealed class MainForm : Form
             10
         );
 
-        var selectedRowColor = _background.IsCoolTheme
-            ? Color.FromArgb(236, 242, 248)
-            : Color.FromArgb(249, 236, 233);
-        using var rowBrush = new SolidBrush(selected ? selectedRowColor : Color.White);
+        var selectedRowColor = GetTaskRowSelectedColor();
+        var rowBaseColor = GetTaskRowBaseColor();
+        using var rowBrush = new SolidBrush(selected ? selectedRowColor : rowBaseColor);
         e.Graphics.FillPath(rowBrush, rowPath);
 
         using var titleBrush = new SolidBrush(UiPalette.TextPrimary);
@@ -1052,7 +1189,7 @@ internal sealed class MainForm : Form
 
         if (selected)
         {
-            var accent = _background.IsCoolTheme ? UiPalette.BusinessPrimary : UiPalette.Primary;
+            var accent = GetTaskSelectionDotColor();
             using var dotBrush = new SolidBrush(accent);
             e.Graphics.FillEllipse(dotBrush, e.Bounds.Right - 20, e.Bounds.Y + (e.Bounds.Height / 2F) - 4, 8, 8);
         }
@@ -1061,13 +1198,20 @@ internal sealed class MainForm : Form
 
 internal sealed class FloatingFocusForm : Form
 {
+    private const int ResizeCornerHitSize = 22;
+
     private readonly Action _onBackToMain;
     private readonly Action _onFocusToggle;
     private readonly Action _onReset;
-    private bool _useBusinessTheme;
+    private readonly Action<Size>? _onResizeCommitted;
+    private WindowsThemeMode _themeMode = WindowsThemeMode.WarmVivid;
     private bool _dragging;
+    private bool _resizingFromBottomLeft;
+    private bool _didResizeDuringDrag;
     private Point _dragStartCursor;
     private Point _dragStartForm;
+    private Point _resizeStartCursor;
+    private Rectangle _resizeStartBounds;
 
     private readonly RoundedTagLabel _phaseLabel = new()
     {
@@ -1086,32 +1230,50 @@ internal sealed class FloatingFocusForm : Form
     {
         AutoSize = false,
         Dock = DockStyle.Top,
-        Height = 30,
+        Height = 28,
         Font = new Font("Segoe UI", 9F, FontStyle.Bold),
         ForeColor = UiPalette.TextPrimary,
         TextAlign = ContentAlignment.MiddleCenter,
-        Margin = new Padding(0, 0, 0, 2)
+        Margin = new Padding(0, 0, 0, 1)
     };
 
     private readonly TimerRingControl _ringControl = new()
     {
         Dock = DockStyle.Fill,
-        MinimumSize = new Size(230, 230),
-        TimeFontSize = 17F,
+        MinimumSize = new Size(206, 206),
+        TimeFontSize = 16.5F,
         TrackThickness = 12F,
         RingThickness = 12F,
         GlowThickness = 16F
     };
 
-    private readonly Button _focusButton = CreateFloatingIconButton("⏸", primary: true, width: 82, height: 62, fontSize: 22F);
-    private readonly Button _resetButton = CreateFloatingIconButton("↺", primary: false, width: 76, height: 62, fontSize: 26F);
-    private readonly Button _backButton = CreateFloatingIconButton("←", primary: false, width: 64, height: 64, fontSize: 20F);
+    private readonly Button _focusButton = CreateFloatingIconButton("⏸", primary: true, width: 78, height: 58, fontSize: 20F);
+    private readonly Button _resetButton = CreateFloatingIconButton("↺", primary: false, width: 72, height: 58, fontSize: 24F);
+    private readonly Button _backButton = CreateFloatingIconButton("←", primary: false, width: 60, height: 60, fontSize: 18F);
 
-    public FloatingFocusForm(Action onBackToMain, Action onFocusToggle, Action onReset)
+    public FloatingFocusForm(
+        Action onBackToMain,
+        Action onFocusToggle,
+        Action onReset,
+        Size initialSize,
+        Action<Size>? onResizeCommitted = null
+    )
     {
         _onBackToMain = onBackToMain;
         _onFocusToggle = onFocusToggle;
         _onReset = onReset;
+        _onResizeCommitted = onResizeCommitted;
+
+        var initialWidth = Math.Clamp(
+            initialSize.Width,
+            WindowsAppState.MinFloatingWindowWidth,
+            WindowsAppState.MaxFloatingWindowWidth
+        );
+        var initialHeight = Math.Clamp(
+            initialSize.Height,
+            WindowsAppState.MinFloatingWindowHeight,
+            WindowsAppState.MaxFloatingWindowHeight
+        );
 
         Text = "Tomato Focus";
         Icon = AppIconProvider.GetAppIcon();
@@ -1119,16 +1281,16 @@ internal sealed class FloatingFocusForm : Form
         StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = false;
         TopMost = true;
-        Width = 380;
-        Height = 460;
-        MinimumSize = new Size(340, 420);
+        Width = initialWidth;
+        Height = initialHeight;
+        MinimumSize = new Size(WindowsAppState.MinFloatingWindowWidth, WindowsAppState.MinFloatingWindowHeight);
         BackColor = Color.FromArgb(242, 247, 252);
-        Opacity = 0.94D;
+        Opacity = 0.90D;
 
         var card = new GlassCardPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(12)
+            Padding = new Padding(10)
         };
 
         var layout = new TableLayoutPanel
@@ -1155,7 +1317,7 @@ internal sealed class FloatingFocusForm : Form
         topRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         topRow.Controls.Add(_phaseLabel, 0, 0);
         topRow.Controls.Add(_backButton, 2, 0);
-        _phaseLabel.Margin = new Padding(0, 0, 0, 6);
+        _phaseLabel.Margin = new Padding(0, 0, 0, 4);
         _backButton.Margin = new Padding(0, 0, 0, 0);
 
         _backButton.Click += (_, _) => _onBackToMain();
@@ -1173,7 +1335,7 @@ internal sealed class FloatingFocusForm : Form
         buttonRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         buttonRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         buttonRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-        _focusButton.Margin = new Padding(0, 0, 16, 0);
+        _focusButton.Margin = new Padding(0, 0, 12, 0);
         _resetButton.Margin = new Padding(0, 0, 0, 0);
         buttonRow.Controls.Add(_focusButton, 1, 0);
         buttonRow.Controls.Add(_resetButton, 2, 0);
@@ -1182,7 +1344,7 @@ internal sealed class FloatingFocusForm : Form
         {
             Dock = DockStyle.Fill,
             BackColor = Color.Transparent,
-            Padding = new Padding(0, 8, 0, 8)
+            Padding = new Padding(0, 6, 0, 6)
         };
         ringHost.Controls.Add(_ringControl);
 
@@ -1205,7 +1367,7 @@ internal sealed class FloatingFocusForm : Form
         Color phaseColor,
         int fallbackWorkSeconds,
         bool hasSessionTask,
-        bool useBusinessTheme
+        WindowsThemeMode themeMode
     )
     {
         var isIdle = snapshot.Phase == PomodoroPhase.Idle;
@@ -1213,7 +1375,7 @@ internal sealed class FloatingFocusForm : Form
         var remainingSeconds = isIdle ? fallbackWorkSeconds : Math.Max(0, snapshot.RemainingSeconds);
         var ratio = totalSeconds <= 0 ? 1F : (float)remainingSeconds / totalSeconds;
 
-        SetBusinessTheme(useBusinessTheme);
+        SetThemeMode(themeMode);
 
         _phaseLabel.Text = snapshot.Phase switch
         {
@@ -1223,7 +1385,7 @@ internal sealed class FloatingFocusForm : Form
             _ => "Ready"
         };
         _phaseLabel.ForeColor = phaseColor;
-        _phaseLabel.BackColor = CreateTagBackground(phaseColor, useBusinessTheme);
+        _phaseLabel.BackColor = CreateTagBackground(phaseColor, themeMode);
         _focusButton.Text = snapshot.IsRunning
             ? "⏸"
             : "▶";
@@ -1235,15 +1397,21 @@ internal sealed class FloatingFocusForm : Form
         _ringControl.TimeText = $"{remainingSeconds / 60:00}:{remainingSeconds % 60:00}";
     }
 
-    public void SetBusinessTheme(bool useBusinessTheme)
+    public void SetThemeMode(WindowsThemeMode themeMode)
     {
-        if (_useBusinessTheme == useBusinessTheme)
+        if (_themeMode == themeMode)
         {
             return;
         }
 
-        _useBusinessTheme = useBusinessTheme;
-        ApplyThemeToButtonTree(this, useBusinessTheme);
+        _themeMode = themeMode;
+        ApplyThemeToButtonTree(this, themeMode);
+        BackColor = themeMode switch
+        {
+            WindowsThemeMode.BusinessMotion => Color.FromArgb(242, 247, 252),
+            WindowsThemeMode.GreenFocus => Color.FromArgb(233, 242, 236),
+            _ => Color.FromArgb(252, 244, 240)
+        };
         Invalidate(true);
     }
 
@@ -1264,11 +1432,16 @@ internal sealed class FloatingFocusForm : Form
         };
     }
 
-    private static Color CreateTagBackground(Color accent, bool useBusinessTheme)
+    private static Color CreateTagBackground(Color accent, WindowsThemeMode themeMode)
     {
         static int Mix(int from, int to, float t) => (int)Math.Clamp(MathF.Round(from + (to - from) * t), 0, 255);
 
-        var strength = useBusinessTheme ? 0.12F : 0.18F;
+        var strength = themeMode switch
+        {
+            WindowsThemeMode.BusinessMotion => 0.12F,
+            WindowsThemeMode.GreenFocus => 0.16F,
+            _ => 0.18F
+        };
         return Color.FromArgb(
             255,
             Mix(255, accent.R, strength),
@@ -1277,18 +1450,26 @@ internal sealed class FloatingFocusForm : Form
         );
     }
 
-    private static void ApplyThemeToButtonTree(Control root, bool useBusinessTheme)
+    private static void ApplyThemeToButtonTree(Control root, WindowsThemeMode themeMode)
     {
         foreach (Control control in root.Controls)
         {
             if (control is GlassActionButton button)
             {
-                button.UseBusinessTheme = useBusinessTheme;
+                button.ThemeMode = themeMode;
+            }
+            else if (control is GlassCardPanel card)
+            {
+                card.ThemeMode = themeMode;
+            }
+            else if (control is TimerRingControl ring)
+            {
+                ring.ThemeMode = themeMode;
             }
 
             if (control.HasChildren)
             {
-                ApplyThemeToButtonTree(control, useBusinessTheme);
+                ApplyThemeToButtonTree(control, themeMode);
             }
         }
     }
@@ -1341,6 +1522,17 @@ internal sealed class FloatingFocusForm : Form
             return;
         }
 
+        if (IsBottomLeftResizeHotZone(sender, e.Location))
+        {
+            _resizingFromBottomLeft = true;
+            _didResizeDuringDrag = false;
+            _resizeStartCursor = Cursor.Position;
+            _resizeStartBounds = Bounds;
+            _dragging = false;
+            Cursor = Cursors.SizeNESW;
+            return;
+        }
+
         _dragging = true;
         _dragStartCursor = Cursor.Position;
         _dragStartForm = Location;
@@ -1348,8 +1540,15 @@ internal sealed class FloatingFocusForm : Form
 
     private void OnDragMouseMove(object? sender, MouseEventArgs e)
     {
+        if (_resizingFromBottomLeft)
+        {
+            ResizeFromBottomLeftCorner();
+            return;
+        }
+
         if (!_dragging)
         {
+            UpdateResizeCursor(sender, e.Location);
             return;
         }
 
@@ -1363,8 +1562,52 @@ internal sealed class FloatingFocusForm : Form
     {
         if (e.Button == MouseButtons.Left)
         {
+            if (_resizingFromBottomLeft && _didResizeDuringDrag)
+            {
+                _onResizeCommitted?.Invoke(Size);
+            }
+            _resizingFromBottomLeft = false;
             _dragging = false;
+            _didResizeDuringDrag = false;
+            UpdateResizeCursor(sender, e.Location);
         }
+    }
+
+    private bool IsBottomLeftResizeHotZone(object? sender, Point sourceLocation)
+    {
+        if (sender is not Control source)
+        {
+            return false;
+        }
+
+        var formPoint = PointToClient(source.PointToScreen(sourceLocation));
+        return formPoint.X <= ResizeCornerHitSize &&
+               formPoint.Y >= ClientSize.Height - ResizeCornerHitSize;
+    }
+
+    private void UpdateResizeCursor(object? sender, Point sourceLocation)
+    {
+        Cursor = IsBottomLeftResizeHotZone(sender, sourceLocation)
+            ? Cursors.SizeNESW
+            : Cursors.Default;
+    }
+
+    private void ResizeFromBottomLeftCorner()
+    {
+        var cursor = Cursor.Position;
+        var dx = cursor.X - _resizeStartCursor.X;
+        var dy = cursor.Y - _resizeStartCursor.Y;
+
+        var right = _resizeStartBounds.Right;
+        var newWidth = Math.Max(MinimumSize.Width, _resizeStartBounds.Width - dx);
+        var newHeight = Math.Max(MinimumSize.Height, _resizeStartBounds.Height + dy);
+        var newX = right - newWidth;
+
+        if (newWidth != Width || newHeight != Height)
+        {
+            _didResizeDuringDrag = true;
+        }
+        SetBounds(newX, _resizeStartBounds.Y, newWidth, newHeight);
     }
 }
 
@@ -1378,7 +1621,7 @@ internal sealed class SettingsForm : Form
     public int ShortBreakMinutes => (int)_shortBreakInput.Value;
     public int LongBreakMinutes => (int)_longBreakInput.Value;
 
-    public SettingsForm(int workMinutes, int shortBreakMinutes, int longBreakMinutes)
+    public SettingsForm(int workMinutes, int shortBreakMinutes, int longBreakMinutes, WindowsThemeMode themeMode)
     {
         Text = "Settings";
         Icon = AppIconProvider.GetAppIcon();
@@ -1388,7 +1631,12 @@ internal sealed class SettingsForm : Form
         MaximizeBox = false;
         ShowInTaskbar = false;
         ClientSize = new Size(360, 250);
-        BackColor = UiPalette.Window;
+        BackColor = themeMode switch
+        {
+            WindowsThemeMode.BusinessMotion => Color.FromArgb(242, 247, 252),
+            WindowsThemeMode.GreenFocus => Color.FromArgb(233, 242, 236),
+            _ => UiPalette.Window
+        };
 
         _workInput = CreateDurationInput(workMinutes, 1, 60);
         _shortBreakInput = CreateDurationInput(shortBreakMinutes, 1, 30);
@@ -1422,7 +1670,7 @@ internal sealed class SettingsForm : Form
         layout.Controls.Add(CreateSettingsLabel("Long Break"), 0, 2);
         layout.Controls.Add(_longBreakInput, 1, 2);
 
-        var doneButton = CreateDialogPrimaryButton("Done");
+        var doneButton = CreateDialogPrimaryButton("Done", themeMode);
         doneButton.Width = 96;
         doneButton.DialogResult = DialogResult.OK;
 
@@ -1455,21 +1703,18 @@ internal sealed class SettingsForm : Form
         };
     }
 
-    private static Button CreateDialogPrimaryButton(string text)
+    private static Button CreateDialogPrimaryButton(string text, WindowsThemeMode themeMode)
     {
-        var button = new Button
+        var button = new GlassActionButton(true)
         {
             Text = text,
             Width = 100,
             Height = 40,
             AutoSize = false,
             Font = new Font("Segoe UI", 10F, FontStyle.Bold),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = UiPalette.Primary,
-            ForeColor = Color.White,
+            ThemeMode = themeMode,
             TextAlign = ContentAlignment.MiddleCenter
         };
-        button.FlatAppearance.BorderSize = 0;
         RoundControl(button, 12);
         return button;
     }
@@ -1497,20 +1742,20 @@ internal sealed class SettingsForm : Form
 
 internal sealed class GradientBackgroundPanel : Panel
 {
-    private bool _isCoolTheme;
+    private WindowsThemeMode _themeMode = WindowsThemeMode.WarmVivid;
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     [Browsable(false)]
-    public bool IsCoolTheme
+    public WindowsThemeMode ThemeMode
     {
-        get => _isCoolTheme;
+        get => _themeMode;
         set
         {
-            if (_isCoolTheme == value)
+            if (_themeMode == value)
             {
                 return;
             }
-            _isCoolTheme = value;
+            _themeMode = value;
             Invalidate();
         }
     }
@@ -1523,8 +1768,24 @@ internal sealed class GradientBackgroundPanel : Panel
     protected override void OnPaintBackground(PaintEventArgs e)
     {
         var rect = ClientRectangle;
-        var startColor = _isCoolTheme ? Color.FromArgb(242, 247, 255) : Color.FromArgb(255, 247, 242);
-        var endColor = _isCoolTheme ? Color.FromArgb(232, 240, 252) : Color.FromArgb(255, 236, 228);
+        var (startColor, endColor, orbColor) = _themeMode switch
+        {
+            WindowsThemeMode.BusinessMotion => (
+                Color.FromArgb(242, 247, 255),
+                Color.FromArgb(232, 240, 252),
+                Color.FromArgb(58, 127, 176, 255)
+            ),
+            WindowsThemeMode.GreenFocus => (
+                Color.FromArgb(239, 247, 242),
+                Color.FromArgb(224, 238, 229),
+                Color.FromArgb(64, 73, 170, 118)
+            ),
+            _ => (
+                Color.FromArgb(255, 247, 242),
+                Color.FromArgb(255, 236, 228),
+                Color.FromArgb(72, 241, 120, 106)
+            )
+        };
         using var gradient = new LinearGradientBrush(
             rect,
             startColor,
@@ -1534,9 +1795,7 @@ internal sealed class GradientBackgroundPanel : Panel
         e.Graphics.FillRectangle(gradient, rect);
 
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using var orb2 = new SolidBrush(_isCoolTheme
-            ? Color.FromArgb(58, 127, 176, 255)
-            : Color.FromArgb(72, 241, 120, 106));
+        using var orb2 = new SolidBrush(orbColor);
         e.Graphics.FillEllipse(orb2, -90, rect.Height - 220, 260, 220);
     }
 }
@@ -1697,7 +1956,7 @@ internal sealed class BufferedListBox : ListBox
 internal sealed class GlassActionButton : Button
 {
     private readonly bool _isPrimary;
-    private bool _useBusinessTheme;
+    private WindowsThemeMode _themeMode = WindowsThemeMode.WarmVivid;
     private bool _useVividSecondaryAccent;
     private bool _isHovered;
     private bool _isPressed;
@@ -1706,17 +1965,17 @@ internal sealed class GlassActionButton : Button
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     [Browsable(false)]
-    public bool UseBusinessTheme
+    public WindowsThemeMode ThemeMode
     {
-        get => _useBusinessTheme;
+        get => _themeMode;
         set
         {
-            if (_useBusinessTheme == value)
+            if (_themeMode == value)
             {
                 return;
             }
 
-            _useBusinessTheme = value;
+            _themeMode = value;
             Invalidate();
         }
     }
@@ -1845,7 +2104,7 @@ internal sealed class GlassActionButton : Button
         using var path = CreateRoundedRectPath(rect, radius);
         PaintBackground(e.Graphics, rect, path, radius);
 
-        var secondaryTextColor = !_useBusinessTheme && _useVividSecondaryAccent
+        var secondaryTextColor = _themeMode == WindowsThemeMode.WarmVivid && _useVividSecondaryAccent
             ? UiPalette.Primary
             : UiPalette.TextPrimary;
         var textColor = Enabled
@@ -1876,7 +2135,7 @@ internal sealed class GlassActionButton : Button
     {
         if (!Enabled)
         {
-            if (!_useBusinessTheme && _useVividSecondaryAccent && !_isPrimary)
+            if (_themeMode == WindowsThemeMode.WarmVivid && _useVividSecondaryAccent && !_isPrimary)
             {
                 using var vividDisabledFill = new SolidBrush(Color.FromArgb(251, 238, 234));
                 using var vividDisabledBorder = new Pen(Color.FromArgb(208, 153, 145), 1F);
@@ -1893,8 +2152,18 @@ internal sealed class GlassActionButton : Button
 
         if (_isPrimary)
         {
-            var end = _useBusinessTheme ? UiPalette.BusinessPrimary : UiPalette.Primary;
-            var start = _useBusinessTheme ? ShiftColor(end, 0.16F) : Color.FromArgb(236, 96, 82);
+            var end = _themeMode switch
+            {
+                WindowsThemeMode.BusinessMotion => UiPalette.BusinessPrimary,
+                WindowsThemeMode.GreenFocus => UiPalette.GreenPrimary,
+                _ => UiPalette.Primary
+            };
+            var start = _themeMode switch
+            {
+                WindowsThemeMode.BusinessMotion => ShiftColor(end, 0.16F),
+                WindowsThemeMode.GreenFocus => ShiftColor(end, 0.2F),
+                _ => Color.FromArgb(236, 96, 82)
+            };
             if (_isPressed)
             {
                 start = ShiftColor(start, -0.1F);
@@ -1911,7 +2180,7 @@ internal sealed class GlassActionButton : Button
                 var shadowRect = rect;
                 shadowRect.Offset(0, 2);
                 using var shadowPath = CreateRoundedRectPath(shadowRect, radius);
-                var shadowColor = _useBusinessTheme ? UiPalette.BusinessPrimary : UiPalette.Primary;
+                var shadowColor = end;
                 using var shadowBrush = new SolidBrush(Color.FromArgb(_isHovered ? 52 : 42, shadowColor));
                 graphics.FillPath(shadowBrush, shadowPath);
             }
@@ -1923,7 +2192,7 @@ internal sealed class GlassActionButton : Button
             return;
         }
 
-        if (!_useBusinessTheme && _useVividSecondaryAccent)
+        if (_themeMode == WindowsThemeMode.WarmVivid && _useVividSecondaryAccent)
         {
             var accentFill = _isPressed
                 ? Color.FromArgb(245, 223, 218)
@@ -1938,16 +2207,21 @@ internal sealed class GlassActionButton : Button
             return;
         }
 
-        var secondaryFill = _useBusinessTheme
-            ? (_isPressed
-                ? Color.FromArgb(229, 235, 241)
-                : (_isHovered ? Color.FromArgb(235, 241, 247) : Color.FromArgb(240, 245, 250)))
-            : (_isPressed
-                ? Color.FromArgb(230, 236, 244)
-                : (_isHovered ? Color.FromArgb(236, 242, 249) : Color.FromArgb(241, 245, 250)));
-        var secondaryBorder = _useBusinessTheme
-            ? (_isPressed ? Color.FromArgb(180, 188, 201, 216) : Color.FromArgb(184, 197, 210, 224))
-            : (_isPressed ? Color.FromArgb(182, 200, 214, 228) : Color.FromArgb(182, 208, 220, 232));
+        var (secondaryFill, secondaryBorder) = _themeMode switch
+        {
+            WindowsThemeMode.BusinessMotion => (
+                _isPressed ? Color.FromArgb(229, 235, 241) : (_isHovered ? Color.FromArgb(235, 241, 247) : Color.FromArgb(240, 245, 250)),
+                _isPressed ? Color.FromArgb(180, 188, 201, 216) : Color.FromArgb(184, 197, 210, 224)
+            ),
+            WindowsThemeMode.GreenFocus => (
+                _isPressed ? Color.FromArgb(225, 236, 229) : (_isHovered ? Color.FromArgb(231, 241, 235) : Color.FromArgb(236, 246, 240)),
+                _isPressed ? Color.FromArgb(176, 192, 182, 205) : Color.FromArgb(184, 198, 188, 212)
+            ),
+            _ => (
+                _isPressed ? Color.FromArgb(230, 236, 244) : (_isHovered ? Color.FromArgb(236, 242, 249) : Color.FromArgb(241, 245, 250)),
+                _isPressed ? Color.FromArgb(182, 200, 214, 228) : Color.FromArgb(182, 208, 220, 232)
+            )
+        };
 
         using var fillBrush = new SolidBrush(secondaryFill);
         using var borderPen = new Pen(secondaryBorder, 1F);
@@ -1957,9 +2231,14 @@ internal sealed class GlassActionButton : Button
 
     private Color ResolveDisabledTextColor()
     {
-        if (!_useBusinessTheme && _useVividSecondaryAccent && !_isPrimary)
+        if (_themeMode == WindowsThemeMode.WarmVivid && _useVividSecondaryAccent && !_isPrimary)
         {
             return Color.FromArgb(178, 121, 110);
+        }
+
+        if (_themeMode == WindowsThemeMode.GreenFocus)
+        {
+            return Color.FromArgb(142, 154, 146);
         }
 
         return Color.FromArgb(155, 164, 176);
@@ -2066,6 +2345,25 @@ internal sealed class GlassActionButton : Button
 
 internal sealed class GlassCardPanel : Panel
 {
+    private WindowsThemeMode _themeMode = WindowsThemeMode.WarmVivid;
+
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    [Browsable(false)]
+    public WindowsThemeMode ThemeMode
+    {
+        get => _themeMode;
+        set
+        {
+            if (_themeMode == value)
+            {
+                return;
+            }
+
+            _themeMode = value;
+            Invalidate();
+        }
+    }
+
     public GlassCardPanel()
     {
         DoubleBuffered = true;
@@ -2084,16 +2382,34 @@ internal sealed class GlassCardPanel : Panel
         }
 
         using var path = CreateRoundedRectPath(rect, 20);
+        var (start, end, borderColor) = _themeMode switch
+        {
+            WindowsThemeMode.BusinessMotion => (
+                Color.FromArgb(223, 248, 252, 255),
+                Color.FromArgb(198, 246, 250, 255),
+                Color.FromArgb(175, 241, 248, 255)
+            ),
+            WindowsThemeMode.GreenFocus => (
+                Color.FromArgb(223, 236, 248, 239),
+                Color.FromArgb(198, 230, 244, 234),
+                Color.FromArgb(175, 212, 231, 218)
+            ),
+            _ => (
+                Color.FromArgb(223, 255, 255, 255),
+                Color.FromArgb(198, 255, 255, 255),
+                Color.FromArgb(175, 255, 255, 255)
+            )
+        };
 
         using var fill = new LinearGradientBrush(
             rect,
-            Color.FromArgb(223, 255, 255, 255),
-            Color.FromArgb(198, 255, 255, 255),
+            start,
+            end,
             LinearGradientMode.ForwardDiagonal
         );
         e.Graphics.FillPath(fill, path);
 
-        using var border = new Pen(Color.FromArgb(175, 255, 255, 255), 1.2F);
+        using var border = new Pen(borderColor, 1.2F);
         e.Graphics.DrawPath(border, path);
     }
 
@@ -2147,6 +2463,7 @@ internal sealed class TimerRingControl : Control
     private float _trackThickness = 10F;
     private float _ringThickness = 10F;
     private float _glowThickness = 14F;
+    private WindowsThemeMode _themeMode = WindowsThemeMode.WarmVivid;
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     [Browsable(false)]
@@ -2232,6 +2549,29 @@ internal sealed class TimerRingControl : Control
         }
     }
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    [Browsable(false)]
+    public WindowsThemeMode ThemeMode
+    {
+        get => _themeMode;
+        set
+        {
+            if (_themeMode == value)
+            {
+                return;
+            }
+
+            _themeMode = value;
+            BackColor = value switch
+            {
+                WindowsThemeMode.GreenFocus => Color.FromArgb(236, 246, 240),
+                WindowsThemeMode.BusinessMotion => Color.FromArgb(246, 249, 252),
+                _ => Color.White
+            };
+            Invalidate();
+        }
+    }
+
     public TimerRingControl()
     {
         SetStyle(
@@ -2258,19 +2598,25 @@ internal sealed class TimerRingControl : Control
         var x = (ClientSize.Width - size) / 2F;
         var y = (ClientSize.Height - size) / 2F;
         var outer = new RectangleF(x, y, size, size);
+        var (ringBgColor, ringTrackColor) = _themeMode switch
+        {
+            WindowsThemeMode.GreenFocus => (Color.FromArgb(76, 233, 244, 236), Color.FromArgb(176, 185, 214, 194)),
+            WindowsThemeMode.BusinessMotion => (Color.FromArgb(60, 255, 255, 255), Color.FromArgb(178, 216, 225, 236)),
+            _ => (Color.FromArgb(60, 255, 255, 255), Color.FromArgb(178, 216, 225, 236))
+        };
 
-        using var bgBrush = new SolidBrush(Color.FromArgb(60, 255, 255, 255));
+        using var bgBrush = new SolidBrush(ringBgColor);
         e.Graphics.FillEllipse(bgBrush, outer);
 
         var ringRect = new RectangleF(x + 22, y + 22, size - 44, size - 44);
-        using var trackPen = new Pen(Color.FromArgb(178, 216, 225, 236), _trackThickness);
+        using var trackPen = new Pen(ringTrackColor, _trackThickness);
         e.Graphics.DrawEllipse(trackPen, ringRect);
 
         using var glowPen = new Pen(Color.FromArgb(70, _ringColor), _glowThickness) { StartCap = LineCap.Round, EndCap = LineCap.Round };
         using var ringPen = new Pen(_ringColor, _ringThickness) { StartCap = LineCap.Round, EndCap = LineCap.Round };
-        var sweep = 360F * _remainingRatio;
-        e.Graphics.DrawArc(glowPen, ringRect, -90F, sweep);
-        e.Graphics.DrawArc(ringPen, ringRect, -90F, sweep);
+        var arc = TimerRingGeometry.DescribeCountdownArc(_remainingRatio);
+        e.Graphics.DrawArc(glowPen, ringRect, arc.StartAngle, arc.SweepAngle);
+        e.Graphics.DrawArc(ringPen, ringRect, arc.StartAngle, arc.SweepAngle);
 
         var textRect = new RectangleF(ringRect.X + 20, ringRect.Y + 20, ringRect.Width - 40, ringRect.Height - 40);
         var fittedFontSize = CalculateFittedFontSize(e.Graphics, _timeText, textRect.Size, _timeFontSize);
@@ -2313,13 +2659,20 @@ internal sealed class TimerRingControl : Control
 
 internal sealed class WinTask
 {
-    public Guid Id { get; } = Guid.NewGuid();
+    public Guid Id { get; set; } = Guid.NewGuid();
     public string Title { get; set; }
     public int CompletedPomodoros { get; set; }
 
     public WinTask(string title)
+        : this(Guid.NewGuid(), title, 0)
     {
+    }
+
+    public WinTask(Guid id, string title, int completedPomodoros)
+    {
+        Id = id == Guid.Empty ? Guid.NewGuid() : id;
         Title = title;
+        CompletedPomodoros = Math.Max(0, completedPomodoros);
     }
 }
 
@@ -2332,6 +2685,9 @@ internal static class UiPalette
     public static readonly Color BusinessPrimary = Color.FromArgb(51, 64, 79);
     public static readonly Color BusinessAccent = Color.FromArgb(82, 138, 148);
     public static readonly Color BusinessLongBreak = Color.FromArgb(61, 94, 145);
+    public static readonly Color GreenPrimary = Color.FromArgb(49, 126, 93);
+    public static readonly Color GreenShortBreak = Color.FromArgb(74, 168, 120);
+    public static readonly Color GreenLongBreak = Color.FromArgb(112, 196, 146);
     public static readonly Color TextPrimary = Color.FromArgb(36, 44, 53);
     public static readonly Color TextSecondary = Color.FromArgb(93, 104, 117);
 }

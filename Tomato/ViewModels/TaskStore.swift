@@ -131,13 +131,21 @@ class TaskStore: ObservableObject {
     
     func deleteTask(at offsets: IndexSet) {
         let selectedID = selectedTask?.id
+        let activeSessionID = sessionTaskID
         let isDeletingSelectedTask = offsets.contains { index in
             tasks.indices.contains(index) && tasks[index].id == selectedID
+        }
+        let isDeletingActiveSessionTask = offsets.contains { index in
+            tasks.indices.contains(index) && tasks[index].id == activeSessionID
         }
 
         tasks.remove(atOffsets: offsets)
         if isDeletingSelectedTask {
             selectedTask = nil
+        }
+        if isDeletingActiveSessionTask {
+            resetTimer()
+            showingFloatingWindow = false
         }
         saveTasks()
     }

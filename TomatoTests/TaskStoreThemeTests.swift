@@ -4,11 +4,13 @@ import XCTest
 final class TaskStoreThemeTests: XCTestCase {
     override func setUp() {
         super.setUp()
+        resetPersistedState()
         ThemePreferences.save(.glassVivid)
         LanguagePreferences.save(.english)
     }
 
     override func tearDown() {
+        resetPersistedState()
         ThemePreferences.save(.glassVivid)
         LanguagePreferences.save(.english)
         super.tearDown()
@@ -133,5 +135,64 @@ final class TaskStoreThemeTests: XCTestCase {
         store.resetTimer()
 
         XCTAssertEqual(store.focusControlState, .focus)
+    }
+
+    func test_deleting_active_session_task_resets_timer_to_initial_state() {
+        UserDefaults.standard.removeObject(forKey: "tasks")
+
+        let store = TaskStore()
+        store.addTask(title: "Task A")
+        let task = store.tasks[0]
+
+        store.selectTask(task)
+        store.startFocusSession()
+        store.remainingSeconds = store.workDuration - 45
+
+        store.deleteTask(id: task.id)
+
+        XCTAssertFalse(store.isTimerRunning)
+        XCTAssertNil(store.sessionTaskID)
+        XCTAssertNil(store.timerDisplayTask)
+        XCTAssertEqual(store.currentPhase, .work)
+        XCTAssertEqual(store.remainingSeconds, store.workDuration)
+        XCTAssertEqual(store.focusControlState, .focus)
+    }
+
+    func test_task_store_restores_task_and_completed_pomodoro_count_from_persistence() throws {
+        let taskID = UUID()
+        let persistedTasks = [PomodoroTask(id: taskID, title: "Task A", completedPomodoros: 3, isCompleted: false)]
+        let encoded = try JSONEncoder().encode(persistedTasks)
+        UserDefaults.standard.set(encoded, forKey: "tasks")
+
+        let reloadedStore = TaskStore()
+
+        XCTAssertEqual(reloadedStore.tasks.count, 1)
+        XCTAssertEqual(reloadedStore.tasks[0].id, taskID)
+        XCTAssertEqual(reloadedStore.tasks[0].title, "Task A")
+        XCTAssertEqual(reloadedStore.tasks[0].completedPomodoros, 3)
+    }
+
+    func test_task_store_restores_theme_and_durations_from_persistence() {
+        let store = TaskStore()
+        store.themeMode = .businessMotion
+        store.workDuration = 45 * 60
+        store.shortBreakDuration = 8 * 60
+        store.longBreakDuration = 25 * 60
+
+        let reloadedStore = TaskStore()
+
+        XCTAssertEqual(reloadedStore.themeMode, .businessMotion)
+        XCTAssertEqual(reloadedStore.workDuration, 45 * 60)
+        XCTAssertEqual(reloadedStore.shortBreakDuration, 8 * 60)
+        XCTAssertEqual(reloadedStore.longBreakDuration, 25 * 60)
+    }
+
+    private func resetPersistedState() {
+        UserDefaults.standard.removeObject(forKey: "tasks")
+        UserDefaults.standard.removeObject(forKey: "workDuration")
+        UserDefaults.standard.removeObject(forKey: "shortBreakDuration")
+        UserDefaults.standard.removeObject(forKey: "longBreakDuration")
+        UserDefaults.standard.removeObject(forKey: "floatingWindowWidth")
+        UserDefaults.standard.removeObject(forKey: "floatingWindowHeight")
     }
 }

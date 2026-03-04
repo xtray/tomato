@@ -103,7 +103,8 @@ enum AppText {
         "menu.settings": "Settings...",
 
         "theme.mode.glass_vivid": "Glass Vivid",
-        "theme.mode.business_motion": "Business Motion"
+        "theme.mode.business_motion": "Business Motion",
+        "theme.mode.verdant_calm": "Verdant Calm"
     ]
 
     private static let chineseTable: [String: String] = [
@@ -154,6 +155,7 @@ enum AppText {
         "menu.settings": "设置...",
 
         "theme.mode.glass_vivid": "玻璃炫彩",
-        "theme.mode.business_motion": "商务律动"
+        "theme.mode.business_motion": "商务律动",
+        "theme.mode.verdant_calm": "青岚护目"
     ]
 }

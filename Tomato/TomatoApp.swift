@@ -1,19 +1,44 @@
 import SwiftUI
 import AppKit
 
+protocol ApplicationIconSetting: AnyObject {
+    var applicationIconImage: NSImage! { get set }
+}
+
+extension NSApplication: ApplicationIconSetting {}
+
+enum RuntimeAppIconApplier {
+    static func applyIfPossible(
+        to application: ApplicationIconSetting?,
+        loadIcon: () -> NSImage? = { RuntimeAppIconApplier.loadIconFromMainBundle() }
+    ) {
+        guard let application else { return }
+        guard let icon = loadIcon() else { return }
+        application.applicationIconImage = icon
+    }
+
+    static func loadIconFromMainBundle(bundle: Bundle = .main) -> NSImage? {
+        guard let iconPath = bundle.path(forResource: "AppIcon", ofType: "icns") else {
+            return nil
+        }
+
+        return NSImage(contentsOfFile: iconPath)
+    }
+}
+
 @main
 struct TomatoApp: App {
     @StateObject private var taskStore = TaskStore()
     @State private var commandsLanguage = LanguagePreferences.load()
-
-    init() {
-        applyRuntimeAppIcon()
-    }
+    @State private var hasAppliedRuntimeIcon = false
     
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(taskStore)
+                .onAppear {
+                    applyRuntimeIconIfNeeded()
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
@@ -49,10 +74,9 @@ struct TomatoApp: App {
         }
     }
 
-    private func applyRuntimeAppIcon() {
-        if let iconPath = Bundle.main.path(forResource: "AppIcon", ofType: "icns"),
-           let icon = NSImage(contentsOfFile: iconPath) {
-            NSApplication.shared.applicationIconImage = icon
-        }
+    private func applyRuntimeIconIfNeeded() {
+        guard !hasAppliedRuntimeIcon else { return }
+        RuntimeAppIconApplier.applyIfPossible(to: NSApp)
+        hasAppliedRuntimeIcon = true
     }
 }

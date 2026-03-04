@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Keep audit enabled in CI; suppress local NU1900 noise in restricted networks. -->
+    <NuGetAudit Condition="'$(CI)' == ''">false</NuGetAudit>
+  </PropertyGroup>
+</Project>
