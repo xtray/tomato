@@ -55,7 +55,12 @@ enum FloatingWindowLayout {
             min(availableWidth, availableHeight) - (ringBackgroundPadding * 2)
         )
 
-        return min(maximumRingDiameter, max(minimumRingDiameter, maxFittingDiameter))
+        let preferredDiameter = min(
+            maximumRingDiameter,
+            max(minimumRingDiameter, maxFittingDiameter)
+        )
+        // Keep the preferred minimum when possible, but never exceed currently available space.
+        return min(preferredDiameter, maxFittingDiameter)
     }
 }
 
@@ -268,7 +273,7 @@ class FloatingWindowController: NSObject, ObservableObject {
     }
 
     private func pixelAligned(frame: CGRect, window: NSWindow) -> CGRect {
-        let scale = window.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        let scale = backingScaleFactor(for: frame, fallbackWindow: window)
         guard scale > 0 else { return frame.integral }
         func align(_ value: CGFloat) -> CGFloat {
             (value * scale).rounded() / scale
@@ -279,6 +284,42 @@ class FloatingWindowController: NSObject, ObservableObject {
             width: align(frame.size.width),
             height: align(frame.size.height)
         )
+    }
+
+    private func backingScaleFactor(for frame: CGRect, fallbackWindow window: NSWindow) -> CGFloat {
+        let targetScreen = screenForTargetFrame(frame)
+        return targetScreen?.backingScaleFactor
+            ?? window.screen?.backingScaleFactor
+            ?? NSScreen.main?.backingScaleFactor
+            ?? 2
+    }
+
+    private func screenForTargetFrame(_ frame: CGRect) -> NSScreen? {
+        let screens = NSScreen.screens
+        guard !screens.isEmpty else { return nil }
+
+        var bestScreen: NSScreen?
+        var bestIntersectionArea: CGFloat = 0
+        for screen in screens {
+            let area = intersectionArea(between: frame, and: screen.frame)
+            if area > bestIntersectionArea {
+                bestIntersectionArea = area
+                bestScreen = screen
+            }
+        }
+
+        if let bestScreen, bestIntersectionArea > 0 {
+            return bestScreen
+        }
+
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        return screens.first(where: { $0.frame.contains(center) })
+    }
+
+    private func intersectionArea(between lhs: CGRect, and rhs: CGRect) -> CGFloat {
+        let intersection = lhs.intersection(rhs)
+        guard !intersection.isNull, !intersection.isEmpty else { return 0 }
+        return intersection.width * intersection.height
     }
 }
 
@@ -307,6 +348,7 @@ private final class FloatingBottomLeftResizeHandleView: NSView {
     var onDragChanged: ((CGSize) -> Void)?
     var onDragEnded: ((CGSize) -> Void)?
     private var dragStartInScreen: CGPoint?
+    private var backgroundDraggingBeforeResize: Bool?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -331,6 +373,10 @@ private final class FloatingBottomLeftResizeHandleView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        if let window {
+            backgroundDraggingBeforeResize = window.isMovableByWindowBackground
+            window.isMovableByWindowBackground = false
+        }
         dragStartInScreen = screenPoint(from: event)
         onDragBegan?()
     }
@@ -341,14 +387,16 @@ private final class FloatingBottomLeftResizeHandleView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard let translation = dragTranslation(from: event) else { return }
+        let translation = dragTranslation(from: event) ?? .zero
         onDragEnded?(translation)
+        restoreBackgroundDragging()
         dragStartInScreen = nil
     }
 
     override func viewDidMoveToWindow() {
         if window == nil {
             dragStartInScreen = nil
+            backgroundDraggingBeforeResize = nil
         }
     }
 
@@ -369,6 +417,19 @@ private final class FloatingBottomLeftResizeHandleView: NSView {
     private func screenPoint(from event: NSEvent) -> CGPoint {
         guard let window else { return NSEvent.mouseLocation }
         return window.convertPoint(toScreen: event.locationInWindow)
+    }
+
+    private func restoreBackgroundDragging() {
+        guard let window else {
+            backgroundDraggingBeforeResize = nil
+            return
+        }
+        if let previous = backgroundDraggingBeforeResize {
+            window.isMovableByWindowBackground = previous
+        } else {
+            window.isMovableByWindowBackground = true
+        }
+        backgroundDraggingBeforeResize = nil
     }
 }
 

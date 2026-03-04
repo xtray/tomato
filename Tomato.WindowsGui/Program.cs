@@ -1210,6 +1210,7 @@ internal sealed class FloatingFocusForm : Form
     private bool _didResizeDuringDrag;
     private Point _dragStartCursor;
     private Point _dragStartForm;
+    private Size _dragStartSize;
     private Point _resizeStartCursor;
     private Rectangle _resizeStartBounds;
 
@@ -1359,6 +1360,8 @@ internal sealed class FloatingFocusForm : Form
         SizeChanged += (_, _) => ApplyRoundedWindowRegion();
         ApplyRoundedWindowRegion();
         EnableDrag(this);
+        DpiChanged += OnDpiChanged;
+        MouseCaptureChanged += OnFloatingMouseCaptureChanged;
     }
 
     public void UpdateState(
@@ -1529,13 +1532,17 @@ internal sealed class FloatingFocusForm : Form
             _resizeStartCursor = Cursor.Position;
             _resizeStartBounds = Bounds;
             _dragging = false;
+            BeginDragCapture();
             Cursor = Cursors.SizeNESW;
             return;
         }
 
         _dragging = true;
+        _resizingFromBottomLeft = false;
         _dragStartCursor = Cursor.Position;
         _dragStartForm = Location;
+        _dragStartSize = Size;
+        BeginDragCapture();
     }
 
     private void OnDragMouseMove(object? sender, MouseEventArgs e)
@@ -1555,21 +1562,21 @@ internal sealed class FloatingFocusForm : Form
         var cursor = Cursor.Position;
         var dx = cursor.X - _dragStartCursor.X;
         var dy = cursor.Y - _dragStartCursor.Y;
-        Location = new Point(_dragStartForm.X + dx, _dragStartForm.Y + dy);
+        var newLocation = new Point(_dragStartForm.X + dx, _dragStartForm.Y + dy);
+        if (Size != _dragStartSize)
+        {
+            SetBounds(newLocation.X, newLocation.Y, _dragStartSize.Width, _dragStartSize.Height);
+            return;
+        }
+
+        Location = newLocation;
     }
 
     private void OnDragMouseUp(object? sender, MouseEventArgs e)
     {
         if (e.Button == MouseButtons.Left)
         {
-            if (_resizingFromBottomLeft && _didResizeDuringDrag)
-            {
-                _onResizeCommitted?.Invoke(Size);
-            }
-            _resizingFromBottomLeft = false;
-            _dragging = false;
-            _didResizeDuringDrag = false;
-            UpdateResizeCursor(sender, e.Location);
+            EndDragInteraction(sender, e.Location, releaseCapture: true);
         }
     }
 
@@ -1608,6 +1615,70 @@ internal sealed class FloatingFocusForm : Form
             _didResizeDuringDrag = true;
         }
         SetBounds(newX, _resizeStartBounds.Y, newWidth, newHeight);
+    }
+
+    private void BeginDragCapture()
+    {
+        if (!Capture)
+        {
+            Capture = true;
+        }
+    }
+
+    private void EndDragInteraction(object? sender, Point sourceLocation, bool releaseCapture)
+    {
+        var shouldCommitResize = _resizingFromBottomLeft && _didResizeDuringDrag;
+        _resizingFromBottomLeft = false;
+        _dragging = false;
+        _didResizeDuringDrag = false;
+
+        if (releaseCapture && Capture)
+        {
+            Capture = false;
+        }
+
+        if (shouldCommitResize)
+        {
+            _onResizeCommitted?.Invoke(Size);
+        }
+
+        if (sender is Control)
+        {
+            UpdateResizeCursor(sender, sourceLocation);
+            return;
+        }
+
+        UpdateResizeCursor(this, PointToClient(Cursor.Position));
+    }
+
+    private void OnFloatingMouseCaptureChanged(object? sender, EventArgs e)
+    {
+        if (Capture || (!_dragging && !_resizingFromBottomLeft))
+        {
+            return;
+        }
+
+        EndDragInteraction(this, PointToClient(Cursor.Position), releaseCapture: false);
+    }
+
+    private void OnDpiChanged(object? sender, DpiChangedEventArgs e)
+    {
+        if (_dragging)
+        {
+            _dragStartCursor = Cursor.Position;
+            _dragStartForm = Location;
+            _dragStartSize = Size;
+        }
+
+        if (_resizingFromBottomLeft)
+        {
+            _resizeStartCursor = Cursor.Position;
+            _resizeStartBounds = Bounds;
+        }
+
+        ApplyRoundedWindowRegion();
+        Invalidate(true);
+        Update();
     }
 }
 
