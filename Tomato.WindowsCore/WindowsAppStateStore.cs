@@ -7,6 +7,13 @@ public sealed class WindowsTaskState
     public Guid Id { get; init; } = Guid.NewGuid();
     public string Title { get; init; } = string.Empty;
     public int CompletedPomodoros { get; init; }
+    public bool IsCompleted { get; init; }
+}
+
+public enum WindowsAppLanguage
+{
+    English = 0,
+    Chinese = 1
 }
 
 public sealed class WindowsAppState
@@ -20,6 +27,9 @@ public sealed class WindowsAppState
     public const int MinFloatingWindowHeight = 374;
     public const int MaxFloatingWindowWidth = 1280;
     public const int MaxFloatingWindowHeight = 900;
+    public const double DefaultFloatingWindowOpacity = 0.90D;
+    public const double MinFloatingWindowOpacity = 0.50D;
+    public const double MaxFloatingWindowOpacity = 1.00D;
 
     public WindowsThemeMode ThemeMode { get; init; } = WindowsThemeMode.WarmVivid;
     public int WorkMinutes { get; init; } = DefaultWorkMinutes;
@@ -27,6 +37,8 @@ public sealed class WindowsAppState
     public int LongBreakMinutes { get; init; } = DefaultLongBreakMinutes;
     public int FloatingWindowWidth { get; init; } = DefaultFloatingWindowWidth;
     public int FloatingWindowHeight { get; init; } = DefaultFloatingWindowHeight;
+    public double FloatingWindowOpacity { get; init; } = DefaultFloatingWindowOpacity;
+    public WindowsAppLanguage AppLanguage { get; init; } = WindowsAppLanguage.English;
     public List<WindowsTaskState> Tasks { get; init; } = [];
 
     public static WindowsAppState Default => new();
@@ -51,13 +63,16 @@ public sealed class WindowsAppState
                 max: MaxFloatingWindowHeight,
                 fallback: DefaultFloatingWindowHeight
             ),
+            FloatingWindowOpacity = ClampOpacity(FloatingWindowOpacity),
+            AppLanguage = Enum.IsDefined(AppLanguage) ? AppLanguage : WindowsAppLanguage.English,
             Tasks = (Tasks ?? [])
                 .Where(task => task is not null)
                 .Select(task => new WindowsTaskState
                 {
                     Id = task.Id == Guid.Empty ? Guid.NewGuid() : task.Id,
                     Title = (task.Title ?? string.Empty).Trim(),
-                    CompletedPomodoros = Math.Max(0, task.CompletedPomodoros)
+                    CompletedPomodoros = Math.Max(0, task.CompletedPomodoros),
+                    IsCompleted = task.IsCompleted
                 })
                 .Where(task => !string.IsNullOrEmpty(task.Title))
                 .ToList()
@@ -82,6 +97,16 @@ public sealed class WindowsAppState
         }
 
         return Math.Clamp(value, min, max);
+    }
+
+    private static double ClampOpacity(double value)
+    {
+        if (double.IsNaN(value) || double.IsInfinity(value) || value <= 0)
+        {
+            return DefaultFloatingWindowOpacity;
+        }
+
+        return Math.Clamp(value, MinFloatingWindowOpacity, MaxFloatingWindowOpacity);
     }
 }
 

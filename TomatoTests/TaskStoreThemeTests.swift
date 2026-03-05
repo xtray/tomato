@@ -187,6 +187,95 @@ final class TaskStoreThemeTests: XCTestCase {
         XCTAssertEqual(reloadedStore.longBreakDuration, 25 * 60)
     }
 
+    func test_task_store_loads_floating_window_opacity_from_preferences() {
+        FloatingWindowOpacityPreferences.save(0.78)
+        let store = TaskStore()
+        XCTAssertEqual(store.floatingWindowOpacity, 0.78, accuracy: 0.0001)
+    }
+
+    func test_task_store_normalizes_and_persists_floating_window_opacity_changes() {
+        let store = TaskStore()
+        store.floatingWindowOpacity = 0.2
+
+        XCTAssertEqual(store.floatingWindowOpacity, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(FloatingWindowOpacityPreferences.load(), 0.5, accuracy: 0.0001)
+    }
+
+    func test_reset_settings_restores_defaults_for_settings_menu_values() {
+        let store = TaskStore()
+        let expectedLanguage = AppLanguage.fallback()
+
+        store.themeMode = .businessMotion
+        store.appLanguage = expectedLanguage == .english ? .chinese : .english
+        store.floatingWindowOpacity = 0.66
+        store.workDuration = 45 * 60
+        store.shortBreakDuration = 12 * 60
+        store.longBreakDuration = 30 * 60
+
+        store.resetSettings()
+
+        XCTAssertEqual(store.themeMode, .glassVivid)
+        XCTAssertEqual(store.appLanguage, expectedLanguage)
+        XCTAssertEqual(store.floatingWindowOpacity, FloatingWindowOpacityPreferences.defaultValue, accuracy: 0.0001)
+        XCTAssertEqual(store.workDuration, 25 * 60)
+        XCTAssertEqual(store.shortBreakDuration, 5 * 60)
+        XCTAssertEqual(store.longBreakDuration, 15 * 60)
+    }
+
+    func test_move_task_before_task_moves_item_upward() {
+        let store = TaskStore()
+        store.addTask(title: "A")
+        store.addTask(title: "B")
+        store.addTask(title: "C")
+        store.addTask(title: "D")
+
+        let draggedID = store.tasks[3].id
+        let targetID = store.tasks[1].id
+        store.moveTask(draggedTaskID: draggedID, beforeTaskID: targetID)
+
+        XCTAssertEqual(store.tasks.map(\.title), ["A", "D", "B", "C"])
+    }
+
+    func test_move_task_before_task_moves_item_downward() {
+        let store = TaskStore()
+        store.addTask(title: "A")
+        store.addTask(title: "B")
+        store.addTask(title: "C")
+        store.addTask(title: "D")
+
+        let draggedID = store.tasks[1].id
+        let targetID = store.tasks[3].id
+        store.moveTask(draggedTaskID: draggedID, beforeTaskID: targetID)
+
+        XCTAssertEqual(store.tasks.map(\.title), ["A", "C", "B", "D"])
+    }
+
+    func test_move_task_with_nil_target_moves_item_to_end() {
+        let store = TaskStore()
+        store.addTask(title: "A")
+        store.addTask(title: "B")
+        store.addTask(title: "C")
+
+        let draggedID = store.tasks[0].id
+        store.moveTask(draggedTaskID: draggedID, beforeTaskID: nil)
+
+        XCTAssertEqual(store.tasks.map(\.title), ["B", "C", "A"])
+    }
+
+    func test_move_task_persists_order_after_reload() {
+        let store = TaskStore()
+        store.addTask(title: "A")
+        store.addTask(title: "B")
+        store.addTask(title: "C")
+
+        let draggedID = store.tasks[2].id
+        let targetID = store.tasks[0].id
+        store.moveTask(draggedTaskID: draggedID, beforeTaskID: targetID)
+
+        let reloadedStore = TaskStore()
+        XCTAssertEqual(reloadedStore.tasks.map(\.title), ["C", "A", "B"])
+    }
+
     private func resetPersistedState() {
         UserDefaults.standard.removeObject(forKey: "tasks")
         UserDefaults.standard.removeObject(forKey: "workDuration")
@@ -194,5 +283,6 @@ final class TaskStoreThemeTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: "longBreakDuration")
         UserDefaults.standard.removeObject(forKey: "floatingWindowWidth")
         UserDefaults.standard.removeObject(forKey: "floatingWindowHeight")
+        UserDefaults.standard.removeObject(forKey: FloatingWindowOpacityPreferences.defaultKey)
     }
 }

@@ -22,9 +22,17 @@ public sealed class WindowsAppStateStoreTests
                 LongBreakMinutes = 20,
                 FloatingWindowWidth = 368,
                 FloatingWindowHeight = 452,
+                FloatingWindowOpacity = 0.82D,
+                AppLanguage = WindowsAppLanguage.Chinese,
                 Tasks =
                 [
-                    new WindowsTaskState { Id = taskId, Title = "Write proposal", CompletedPomodoros = 4 }
+                    new WindowsTaskState
+                    {
+                        Id = taskId,
+                        Title = "Write proposal",
+                        CompletedPomodoros = 4,
+                        IsCompleted = true
+                    }
                 ]
             };
 
@@ -37,10 +45,13 @@ public sealed class WindowsAppStateStoreTests
             Assert.Equal(20, loaded.LongBreakMinutes);
             Assert.Equal(368, loaded.FloatingWindowWidth);
             Assert.Equal(452, loaded.FloatingWindowHeight);
+            Assert.Equal(0.82D, loaded.FloatingWindowOpacity, precision: 3);
+            Assert.Equal(WindowsAppLanguage.Chinese, loaded.AppLanguage);
             Assert.Single(loaded.Tasks);
             Assert.Equal(taskId, loaded.Tasks[0].Id);
             Assert.Equal("Write proposal", loaded.Tasks[0].Title);
             Assert.Equal(4, loaded.Tasks[0].CompletedPomodoros);
+            Assert.True(loaded.Tasks[0].IsCompleted);
         }
         finally
         {
@@ -63,6 +74,7 @@ public sealed class WindowsAppStateStoreTests
         Assert.Equal(15, loaded.LongBreakMinutes);
         Assert.Equal(WindowsAppState.DefaultFloatingWindowWidth, loaded.FloatingWindowWidth);
         Assert.Equal(WindowsAppState.DefaultFloatingWindowHeight, loaded.FloatingWindowHeight);
+        Assert.Equal(WindowsAppState.DefaultFloatingWindowOpacity, loaded.FloatingWindowOpacity, precision: 3);
         Assert.Empty(loaded.Tasks);
     }
 
@@ -84,7 +96,38 @@ public sealed class WindowsAppStateStoreTests
             Assert.Equal(15, loaded.LongBreakMinutes);
             Assert.Equal(WindowsAppState.DefaultFloatingWindowWidth, loaded.FloatingWindowWidth);
             Assert.Equal(WindowsAppState.DefaultFloatingWindowHeight, loaded.FloatingWindowHeight);
+            Assert.Equal(WindowsAppState.DefaultFloatingWindowOpacity, loaded.FloatingWindowOpacity, precision: 3);
             Assert.Empty(loaded.Tasks);
+        }
+        finally
+        {
+            CleanupTempPath(tempPath);
+        }
+    }
+
+    [Fact]
+    public void Load_WhenAppLanguageIsInvalid_FallsBackToEnglish()
+    {
+        var tempPath = CreateTempFilePath();
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(tempPath)!);
+            File.WriteAllText(
+                tempPath,
+                """
+                {
+                  "WorkMinutes": 33,
+                  "AppLanguage": 99
+                }
+                """,
+                Encoding.UTF8
+            );
+
+            var store = new WindowsAppStateStore(tempPath);
+            var loaded = store.Load();
+
+            Assert.Equal(33, loaded.WorkMinutes);
+            Assert.Equal(WindowsAppLanguage.English, loaded.AppLanguage);
         }
         finally
         {
@@ -109,6 +152,28 @@ public sealed class WindowsAppStateStoreTests
 
             Assert.Equal(WindowsAppState.MinFloatingWindowWidth, loaded.FloatingWindowWidth);
             Assert.Equal(WindowsAppState.MinFloatingWindowHeight, loaded.FloatingWindowHeight);
+        }
+        finally
+        {
+            CleanupTempPath(tempPath);
+        }
+    }
+
+    [Fact]
+    public void Load_NormalizesFloatingWindowOpacityIntoSupportedRange()
+    {
+        var tempPath = CreateTempFilePath();
+        try
+        {
+            var store = new WindowsAppStateStore(tempPath);
+            store.Save(new WindowsAppState
+            {
+                FloatingWindowOpacity = 0.15D
+            });
+
+            var loaded = store.Load();
+
+            Assert.Equal(WindowsAppState.MinFloatingWindowOpacity, loaded.FloatingWindowOpacity, precision: 3);
         }
         finally
         {

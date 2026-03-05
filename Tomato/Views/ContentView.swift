@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @EnvironmentObject var taskStore: TaskStore
@@ -7,6 +8,7 @@ struct ContentView: View {
     @State private var taskPendingDeletion: PomodoroTask?
     @State private var showingDeleteConfirmation: Bool = false
     @State private var selectedTaskID: UUID?
+    @State private var draggedTaskID: UUID?
 
     var body: some View {
         ZStack {
@@ -134,39 +136,35 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(.horizontal, AppTheme.Spacing.md)
                 } else {
-                    List(selection: $selectedTaskID) {
-                        ForEach(taskStore.tasks) { task in
-                            TaskRowView(
-                                task: task,
-                                isSelected: selectedTaskID == task.id,
-                                themeMode: mode,
-                                onToggleComplete: {
-                                    taskStore.toggleTaskCompletion(task)
-                                }
-                            )
-                            .tag(task.id)
-                            .contextMenu {
-                                Button(
-                                    task.isCompleted
-                                    ? AppText.string("task.mark.undone", language: language)
-                                    : AppText.string("task.mark.done", language: language)
-                                ) {
-                                    taskStore.selectTask(task)
-                                    taskStore.toggleTaskCompletion(task)
-                                }
-
-                                Button(AppText.string("task.delete", language: language), role: .destructive) {
-                                    taskStore.selectTask(task)
-                                    taskPendingDeletion = task
-                                    showingDeleteConfirmation = true
-                                }
+                    ScrollView(.vertical, showsIndicators: true) {
+                        LazyVStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+                            ForEach(taskStore.tasks) { task in
+                                taskRow(task)
+                                    .onDrop(of: [UTType.text], delegate: TaskRowReorderDropDelegate(
+                                        targetTaskID: task.id,
+                                        draggedTaskID: $draggedTaskID,
+                                        moveBefore: { draggedID, targetID in
+                                            taskStore.moveTask(draggedTaskID: draggedID, beforeTaskID: targetID)
+                                        }
+                                    ))
                             }
+
+                            Color.clear
+                                .frame(height: 18)
+                                .contentShape(Rectangle())
+                                .onDrop(of: [UTType.text], delegate: TaskTailReorderDropDelegate(
+                                    draggedTaskID: $draggedTaskID,
+                                    moveToEnd: { draggedID in
+                                        taskStore.moveTask(draggedTaskID: draggedID, beforeTaskID: nil)
+                                    }
+                                ))
                         }
-                        .onDelete(perform: taskStore.deleteTask)
-                        .onMove(perform: taskStore.updateTaskOrder)
+                        .padding(4)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
+                    .background(AppTheme.Colors.textFieldFill(for: mode).opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
 
                 HStack(spacing: AppTheme.Spacing.xs) {
@@ -193,6 +191,7 @@ struct ContentView: View {
                 }
                 .padding(.horizontal, AppTheme.Spacing.xs)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
@@ -293,6 +292,43 @@ struct ContentView: View {
         guard !title.isEmpty else { return }
         taskStore.addTask(title: title)
         newTaskTitle = ""
+    }
+
+    @ViewBuilder
+    private func taskRow(_ task: PomodoroTask) -> some View {
+        TaskRowView(
+            task: task,
+            isSelected: selectedTaskID == task.id,
+            themeMode: mode,
+            onToggleComplete: {
+                taskStore.toggleTaskCompletion(task)
+            }
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            selectedTaskID = task.id
+        }
+        .onDrag {
+            draggedTaskID = task.id
+            return NSItemProvider(object: task.id.uuidString as NSString)
+        }
+        .contextMenu {
+            Button(
+                task.isCompleted
+                ? AppText.string("task.mark.undone", language: language)
+                : AppText.string("task.mark.done", language: language)
+            ) {
+                taskStore.selectTask(task)
+                taskStore.toggleTaskCompletion(task)
+            }
+
+            Button(AppText.string("task.delete.current", language: language), role: .destructive) {
+                taskStore.selectTask(task)
+                taskPendingDeletion = task
+                showingDeleteConfirmation = true
+            }
+        }
     }
 
     var timerColor: Color {
@@ -419,11 +455,48 @@ struct TaskRowView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(isSelected ? AppTheme.Colors.selectionFill(for: themeMode) : Color.clear)
         )
         .contentShape(Rectangle())
+    }
+}
+
+private struct TaskRowReorderDropDelegate: DropDelegate {
+    let targetTaskID: UUID
+    @Binding var draggedTaskID: UUID?
+    let moveBefore: (UUID, UUID) -> Void
+
+    func dropEntered(info: DropInfo) {
+        guard let draggedTaskID, draggedTaskID != targetTaskID else { return }
+        moveBefore(draggedTaskID, targetTaskID)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggedTaskID = nil
+        return true
+    }
+}
+
+private struct TaskTailReorderDropDelegate: DropDelegate {
+    @Binding var draggedTaskID: UUID?
+    let moveToEnd: (UUID) -> Void
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let draggedTaskID else { return false }
+        moveToEnd(draggedTaskID)
+        self.draggedTaskID = nil
+        return true
     }
 }
 

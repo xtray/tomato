@@ -60,6 +60,8 @@ enum AppText {
         "settings.subtitle": "Tune your focus rhythm",
         "settings.theme": "Theme",
         "settings.language": "Language",
+        "settings.opacity": "Floating Window Opacity",
+        "settings.opacity.current": "Current: %d%%",
         "settings.duration.focus": "Focus Duration",
         "settings.duration.short_break": "Short Break",
         "settings.duration.long_break": "Long Break",
@@ -85,6 +87,7 @@ enum AppText {
         "task.mark.done": "Mark as Completed",
         "task.mark.undone": "Mark as Incomplete",
         "task.delete": "Delete Task",
+        "task.delete.current": "Delete Current Task",
 
         "help.quick_theme": "Quick theme switch",
         "help.settings": "Settings",
@@ -112,6 +115,8 @@ enum AppText {
         "settings.subtitle": "调整你的专注节奏",
         "settings.theme": "主题",
         "settings.language": "语言",
+        "settings.opacity": "悬浮窗透明度",
+        "settings.opacity.current": "当前：%d%%",
         "settings.duration.focus": "专注时长",
         "settings.duration.short_break": "短休息",
         "settings.duration.long_break": "长休息",
@@ -137,6 +142,7 @@ enum AppText {
         "task.mark.done": "标记完成",
         "task.mark.undone": "标记为未完成",
         "task.delete": "删除任务",
+        "task.delete.current": "删除当前任务",
 
         "help.quick_theme": "快速切换主题",
         "help.settings": "设置",

@@ -109,6 +109,21 @@ final class ThemeSemanticsTests: XCTestCase {
         )
     }
 
+    func test_task_list_does_not_use_bidirectional_scroll_layout() throws {
+        let thisFileURL = URL(fileURLWithPath: #filePath)
+        let projectRoot = thisFileURL.deletingLastPathComponent().deletingLastPathComponent()
+        let contentViewPath = projectRoot
+            .appendingPathComponent("Tomato")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("ContentView.swift")
+
+        let content = try String(contentsOf: contentViewPath, encoding: .utf8)
+        XCTAssertFalse(
+            content.contains("ScrollView([.horizontal, .vertical], showsIndicators: true)"),
+            "Task list should keep a vertical stack aligned from top-left instead of a centered two-axis scroll layout."
+        )
+    }
+
     func test_runtime_icon_apply_skips_loading_when_application_is_missing() {
         var loadCalls = 0
 

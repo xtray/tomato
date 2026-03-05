@@ -146,4 +146,44 @@ final class ThemePreferencesTests: XCTestCase {
 
         XCTAssertLessThan(withTask, withoutTask)
     }
+
+    func test_floating_window_opacity_preferences_defaults_to_configured_value() {
+        let suite = "FloatingWindowOpacityDefault_\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else {
+            XCTFail("Failed to create user defaults suite")
+            return
+        }
+
+        XCTAssertEqual(
+            FloatingWindowOpacityPreferences.load(from: defaults),
+            FloatingWindowOpacityPreferences.defaultValue,
+            accuracy: 0.0001
+        )
+
+        defaults.removePersistentDomain(forName: suite)
+    }
+
+    func test_floating_window_opacity_preferences_normalizes_out_of_range_values_on_save_and_load() {
+        let suite = "FloatingWindowOpacityNormalize_\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else {
+            XCTFail("Failed to create user defaults suite")
+            return
+        }
+
+        FloatingWindowOpacityPreferences.save(1.2, to: defaults)
+        XCTAssertEqual(
+            FloatingWindowOpacityPreferences.load(from: defaults),
+            1.0,
+            accuracy: 0.0001
+        )
+
+        defaults.set(0.2, forKey: FloatingWindowOpacityPreferences.defaultKey)
+        XCTAssertEqual(
+            FloatingWindowOpacityPreferences.load(from: defaults),
+            0.5,
+            accuracy: 0.0001
+        )
+
+        defaults.removePersistentDomain(forName: suite)
+    }
 }

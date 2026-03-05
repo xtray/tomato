@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 enum FloatingWindowLayout {
     static let resizeHandleSize: CGFloat = 24
@@ -121,6 +122,34 @@ enum FloatingWindowSizePreferences {
     }
 }
 
+enum FloatingWindowOpacityPreferences {
+    static let defaultKey = "floatingWindowOpacity"
+    static let minValue = 0.5
+    static let maxValue = 1.0
+    static let defaultValue = 0.9
+
+    static func load(from defaults: UserDefaults = .standard, key: String = defaultKey) -> Double {
+        guard defaults.object(forKey: key) != nil else {
+            return defaultValue
+        }
+
+        let stored = defaults.double(forKey: key)
+        guard stored.isFinite else {
+            return defaultValue
+        }
+
+        return normalized(stored)
+    }
+
+    static func save(_ value: Double, to defaults: UserDefaults = .standard, key: String = defaultKey) {
+        defaults.set(normalized(value), forKey: key)
+    }
+
+    static func normalized(_ value: Double) -> Double {
+        min(max(value, minValue), maxValue)
+    }
+}
+
 class FloatingWindowController: NSObject, ObservableObject {
     static let shared = FloatingWindowController()
 
@@ -129,6 +158,8 @@ class FloatingWindowController: NSObject, ObservableObject {
     private var onCloseCallback: (() -> Void)?
     private var currentSize: CGSize = FloatingWindowSizePreferences.load()
     private var activeResizeAnchorTopRight: CGPoint?
+    private var opacitySubscription: AnyCancellable?
+    private weak var observedTaskStore: TaskStore?
 
     @Published var isVisible: Bool = false
 
@@ -138,6 +169,7 @@ class FloatingWindowController: NSObject, ObservableObject {
 
     func show(taskStore: TaskStore, onClose: @escaping () -> Void) {
         self.onCloseCallback = onClose
+        observeOpacityChanges(in: taskStore)
 
         if window == nil {
             createWindow(taskStore: taskStore)
@@ -178,6 +210,8 @@ class FloatingWindowController: NSObject, ObservableObject {
                 )
             )
         }
+
+        applyOpacity(taskStore.floatingWindowOpacity)
     }
 
     private func createWindow(taskStore: TaskStore) {
@@ -207,6 +241,23 @@ class FloatingWindowController: NSObject, ObservableObject {
 
         self.hostingView = hosting
         self.window = panel
+    }
+
+    private func observeOpacityChanges(in taskStore: TaskStore) {
+        guard observedTaskStore !== taskStore else { return }
+
+        opacitySubscription?.cancel()
+        observedTaskStore = taskStore
+        opacitySubscription = taskStore.$floatingWindowOpacity
+            .receive(on: RunLoop.main)
+            .sink { [weak self] opacity in
+                self?.applyOpacity(opacity)
+            }
+    }
+
+    private func applyOpacity(_ opacity: Double) {
+        let normalizedOpacity = FloatingWindowOpacityPreferences.normalized(opacity)
+        window?.alphaValue = CGFloat(normalizedOpacity)
     }
 
     static func makePanel(contentRect: NSRect) -> NSPanel {

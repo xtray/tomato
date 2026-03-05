@@ -39,6 +39,7 @@ struct SettingsView: View {
                             }
                         }
                         .pickerStyle(.segmented)
+                        .labelsHidden()
                     }
                     .padding(.horizontal, AppTheme.Spacing.sm)
                     .padding(.vertical, AppTheme.Spacing.sm)
@@ -59,6 +60,7 @@ struct SettingsView: View {
                             }
                         }
                         .pickerStyle(.segmented)
+                        .labelsHidden()
                     }
                     .padding(.horizontal, AppTheme.Spacing.sm)
                     .padding(.vertical, AppTheme.Spacing.sm)
@@ -68,6 +70,8 @@ struct SettingsView: View {
                             .stroke(AppTheme.Colors.textFieldStroke(for: mode), lineWidth: 0.8)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous))
+
+                    opacitySetting(value: $taskStore.floatingWindowOpacity)
 
                     durationSetting(
                         title: AppText.string("settings.duration.focus", language: language),
@@ -93,8 +97,13 @@ struct SettingsView: View {
                         color: AppTheme.Colors.phaseLongBreak(for: mode)
                     )
 
-                    HStack {
+                    HStack(spacing: AppTheme.Spacing.sm) {
                         Spacer()
+                        Button(AppText.string("common.reset", language: language)) {
+                            taskStore.resetSettings()
+                        }
+                        .buttonStyle(SecondaryGlassButtonStyle(mode: mode))
+
                         Button(AppText.string("settings.done", language: language)) {
                             dismiss()
                         }
@@ -104,7 +113,7 @@ struct SettingsView: View {
             }
             .padding(AppTheme.Spacing.md)
         }
-        .frame(width: 440, height: 500)
+        .frame(width: 440, height: 560)
     }
 
     private func durationSetting(title: String, icon: String, value: Binding<Int>, range: ClosedRange<Int>, color: Color) -> some View {
@@ -136,6 +145,35 @@ struct SettingsView: View {
             .labelsHidden()
             .frame(width: 120)
             .tint(color)
+        }
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.vertical, AppTheme.Spacing.sm)
+        .background(AppTheme.Colors.textFieldFill(for: mode))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous)
+                .stroke(AppTheme.Colors.textFieldStroke(for: mode), lineWidth: 0.8)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous))
+    }
+
+    private func opacitySetting(value: Binding<Double>) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            Text(AppText.string("settings.opacity", language: language))
+                .font(.system(size: 14, weight: .semibold))
+
+            HStack(spacing: AppTheme.Spacing.sm) {
+                Slider(
+                    value: value,
+                    in: FloatingWindowOpacityPreferences.minValue...FloatingWindowOpacityPreferences.maxValue,
+                    step: 0.01
+                )
+                .tint(AppTheme.Colors.tomatoPrimary(for: mode))
+
+                Text(AppText.string("settings.opacity.current", language: language, Int((value.wrappedValue * 100).rounded())))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppTheme.Colors.textSecondary(for: mode))
+                    .frame(width: 90, alignment: .trailing)
+            }
         }
         .padding(.horizontal, AppTheme.Spacing.sm)
         .padding(.vertical, AppTheme.Spacing.sm)

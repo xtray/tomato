@@ -34,6 +34,10 @@ enum FocusControlState: Equatable {
 }
 
 class TaskStore: ObservableObject {
+    private static let defaultWorkDuration = 25 * 60
+    private static let defaultShortBreakDuration = 5 * 60
+    private static let defaultLongBreakDuration = 15 * 60
+
     @Published var tasks: [PomodoroTask] = []
     @Published var selectedTask: PomodoroTask?
     @Published private(set) var sessionTaskID: UUID?
@@ -50,6 +54,17 @@ class TaskStore: ObservableObject {
     @Published var themeMode: ThemeMode {
         didSet {
             ThemePreferences.save(themeMode)
+        }
+    }
+    @Published var floatingWindowOpacity: Double {
+        didSet {
+            let normalized = FloatingWindowOpacityPreferences.normalized(floatingWindowOpacity)
+            if abs(normalized - floatingWindowOpacity) > 0.0001 {
+                floatingWindowOpacity = normalized
+                return
+            }
+
+            FloatingWindowOpacityPreferences.save(normalized)
         }
     }
     
@@ -114,10 +129,11 @@ class TaskStore: ObservableObject {
         let savedLongBreakDuration = UserDefaults.standard.integer(forKey: "longBreakDuration")
         self.appLanguage = LanguagePreferences.load()
         self.themeMode = ThemePreferences.load()
+        self.floatingWindowOpacity = FloatingWindowOpacityPreferences.load()
         
-        self.workDuration = savedWorkDuration > 0 ? savedWorkDuration : 25 * 60
-        self.shortBreakDuration = savedShortBreakDuration > 0 ? savedShortBreakDuration : 5 * 60
-        self.longBreakDuration = savedLongBreakDuration > 0 ? savedLongBreakDuration : 15 * 60
+        self.workDuration = savedWorkDuration > 0 ? savedWorkDuration : Self.defaultWorkDuration
+        self.shortBreakDuration = savedShortBreakDuration > 0 ? savedShortBreakDuration : Self.defaultShortBreakDuration
+        self.longBreakDuration = savedLongBreakDuration > 0 ? savedLongBreakDuration : Self.defaultLongBreakDuration
         
         self.remainingSeconds = workDuration
         loadTasks()
@@ -193,6 +209,15 @@ class TaskStore: ObservableObject {
         remainingSeconds = workDuration
         currentPhase = .work
     }
+
+    func resetSettings() {
+        themeMode = .glassVivid
+        appLanguage = AppLanguage.fallback()
+        floatingWindowOpacity = FloatingWindowOpacityPreferences.defaultValue
+        workDuration = Self.defaultWorkDuration
+        shortBreakDuration = Self.defaultShortBreakDuration
+        longBreakDuration = Self.defaultLongBreakDuration
+    }
     
     func closeFloatingWindow() {
         showingFloatingWindow = false
@@ -259,6 +284,23 @@ class TaskStore: ObservableObject {
     
     func updateTaskOrder(from source: IndexSet, to destination: Int) {
         tasks.move(fromOffsets: source, toOffset: destination)
+        saveTasks()
+    }
+
+    func moveTask(draggedTaskID: UUID, beforeTaskID: UUID?) {
+        guard let fromIndex = tasks.firstIndex(where: { $0.id == draggedTaskID }) else { return }
+
+        var reordered = tasks
+        let draggedTask = reordered.remove(at: fromIndex)
+
+        if let beforeTaskID {
+            guard let targetIndex = reordered.firstIndex(where: { $0.id == beforeTaskID }) else { return }
+            reordered.insert(draggedTask, at: targetIndex)
+        } else {
+            reordered.append(draggedTask)
+        }
+
+        tasks = reordered
         saveTasks()
     }
     

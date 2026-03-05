@@ -30,6 +30,7 @@ internal static class AppIconProvider
 internal sealed class MainForm : Form
 {
     private const int MainWindowCornerRadius = 24;
+    private const int TaskContextMenuCornerRadius = 10;
 
     private readonly PomodoroEngine _engine = new();
     private readonly WindowsAppStateStore _stateStore = new(WindowsAppStateStore.DefaultPath());
@@ -46,6 +47,7 @@ internal sealed class MainForm : Form
         WindowsAppState.DefaultFloatingWindowWidth,
         WindowsAppState.DefaultFloatingWindowHeight
     );
+    private double _floatingWindowOpacity = WindowsAppState.DefaultFloatingWindowOpacity;
 
     private readonly GradientBackgroundPanel _background = new() { Dock = DockStyle.Fill };
     private readonly Panel _titleBar = new()
@@ -80,7 +82,8 @@ internal sealed class MainForm : Form
         IntegralHeight = false,
         DrawMode = DrawMode.OwnerDrawFixed,
         ItemHeight = 76,
-        BackColor = Color.FromArgb(250, 252, 254)
+        BackColor = Color.FromArgb(250, 252, 254),
+        HorizontalScrollbar = true
     };
     private readonly Panel _taskListWrap = new()
     {
@@ -91,19 +94,40 @@ internal sealed class MainForm : Form
     };
     private WindowsThemeMode _themeMode = WindowsThemeMode.WarmVivid;
     private WindowsThemeMode _lastTaskListThemeMode = WindowsThemeMode.WarmVivid;
+    private WindowsAppLanguage _appLanguage = WindowsAppLanguage.English;
+    private readonly ContextMenuStrip _taskContextMenu = new()
+    {
+        ShowImageMargin = false,
+        ShowCheckMargin = false
+    };
+    private readonly ToolStripMenuItem _completeTaskMenuItem = new();
+    private readonly ToolStripMenuItem _deleteTaskMenuItem = new();
+    private Guid? _taskContextMenuTaskId;
+    private int _taskDragSourceIndex = -1;
+    private Point _taskDragStartPoint;
+    private bool _taskDragInProgress;
 
     private readonly TextBox _newTaskInput = new()
     {
         BorderStyle = BorderStyle.None,
         Font = new Font("Segoe UI", 10.5F, FontStyle.Regular)
     };
+    private readonly Label _taskSectionTitleLabel = new()
+    {
+        AutoSize = true,
+        Font = new Font("Segoe UI", 13F, FontStyle.Bold),
+        ForeColor = UiPalette.TextPrimary,
+        Anchor = AnchorStyles.Left
+    };
+    private readonly Button _settingsButton = CreateMiniButton(string.Empty);
+    private readonly Button _themeButton = CreateMiniButton(string.Empty);
+    private readonly Button _deleteTaskButton = CreateMiniButton(string.Empty);
 
     private readonly RoundedTagLabel _taskCountBadge = CreateBadgeLabel("0");
     private readonly Label _taskTitleLabel = new()
     {
         AutoSize = true,
         Font = new Font("Segoe UI", 22F, FontStyle.Bold),
-        Text = "Select a task",
         ForeColor = UiPalette.TextPrimary
     };
 
@@ -111,11 +135,10 @@ internal sealed class MainForm : Form
     {
         AutoSize = true,
         Font = new Font("Segoe UI", 10F, FontStyle.Regular),
-        ForeColor = UiPalette.TextSecondary,
-        Text = "Pick a task and start focus"
+        ForeColor = UiPalette.TextSecondary
     };
 
-    private readonly RoundedTagLabel _phaseLabel = CreatePhaseLabel("Focusing...");
+    private readonly RoundedTagLabel _phaseLabel = CreatePhaseLabel(string.Empty);
 
     private readonly TimerRingControl _ringControl = new()
     {
@@ -123,9 +146,9 @@ internal sealed class MainForm : Form
         MinimumSize = new Size(280, 280)
     };
 
-    private readonly Button _focusButton = CreateActionButton("Focus", true);
-    private readonly Button _resetButton = CreateActionButton("Reset", false);
-    private readonly Button _floatButton = CreateActionButton("Float", false);
+    private readonly Button _focusButton = CreateActionButton(string.Empty, true);
+    private readonly Button _resetButton = CreateActionButton(string.Empty, false);
+    private readonly Button _floatButton = CreateActionButton(string.Empty, false);
 
     public MainForm()
     {
@@ -141,6 +164,14 @@ internal sealed class MainForm : Form
 
         _taskList.DrawItem += OnDrawTaskItem;
         _taskList.SelectedIndexChanged += (_, _) => RefreshView();
+        _taskList.MouseDown += OnTaskListMouseDown;
+        _taskList.MouseMove += OnTaskListMouseMove;
+        _taskList.MouseUp += OnTaskListMouseUp;
+        _taskList.DragOver += OnTaskListDragOver;
+        _taskList.DragDrop += OnTaskListDragDrop;
+        _taskList.AllowDrop = true;
+        _taskList.SizeChanged += (_, _) => UpdateTaskListHorizontalExtent();
+        ConfigureTaskContextMenu();
 
         _newTaskInput.KeyDown += (_, e) =>
         {
@@ -269,33 +300,20 @@ internal sealed class MainForm : Form
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        var taskTitle = new Label
-        {
-            AutoSize = true,
-            Font = new Font("Segoe UI", 13F, FontStyle.Bold),
-            Text = "Tasks",
-            ForeColor = UiPalette.TextPrimary,
-            Anchor = AnchorStyles.Left
-        };
-
-        var settingsButton = CreateMiniButton("Settings");
-        settingsButton.Click += (_, _) => OpenSettings();
-        var themeButton = CreateMiniButton("Theme");
-        themeButton.Click += (_, _) =>
+        _settingsButton.Click += (_, _) => OpenSettings();
+        _themeButton.Click += (_, _) =>
         {
             _themeMode = WindowsThemeCatalog.Next(_themeMode);
             _background.ThemeMode = _themeMode;
             SavePersistedState();
             RefreshView();
         };
+        _deleteTaskButton.Click += (_, _) => DeleteSelectedTask();
 
-        var deleteButton = CreateMiniButton("Delete");
-        deleteButton.Click += (_, _) => DeleteSelectedTask();
-
-        header.Controls.Add(taskTitle, 0, 0);
+        header.Controls.Add(_taskSectionTitleLabel, 0, 0);
         header.Controls.Add(_taskCountBadge, 1, 0);
-        header.Controls.Add(themeButton, 2, 0);
-        header.Controls.Add(settingsButton, 3, 0);
+        header.Controls.Add(_themeButton, 2, 0);
+        header.Controls.Add(_settingsButton, 3, 0);
 
         var footer = new TableLayoutPanel
         {
@@ -326,7 +344,7 @@ internal sealed class MainForm : Form
 
         footer.Controls.Add(inputHost, 0, 0);
         footer.Controls.Add(addButton, 1, 0);
-        footer.Controls.Add(deleteButton, 2, 0);
+        footer.Controls.Add(_deleteTaskButton, 2, 0);
 
         layout.Controls.Add(header, 0, 0);
         layout.Controls.Add(_taskListWrap, 0, 1);
@@ -614,6 +632,220 @@ internal sealed class MainForm : Form
         Region = new Region(path);
     }
 
+    private void ConfigureTaskContextMenu()
+    {
+        _completeTaskMenuItem.Text = T("task.mark.done");
+        _deleteTaskMenuItem.Text = T("task.delete.current");
+        _completeTaskMenuItem.Click += OnCompleteTaskMenuItemClick;
+        _deleteTaskMenuItem.Click += OnDeleteTaskMenuItemClick;
+        _taskContextMenu.Items.Add(_completeTaskMenuItem);
+        _taskContextMenu.Items.Add(_deleteTaskMenuItem);
+        _taskContextMenu.Opened += (_, _) => ApplyTaskContextMenuRoundedRegion();
+        _taskContextMenu.SizeChanged += (_, _) => ApplyTaskContextMenuRoundedRegion();
+        _taskContextMenu.Closed += (_, _) =>
+        {
+            _taskContextMenu.Tag = null;
+            _completeTaskMenuItem.Tag = null;
+            _deleteTaskMenuItem.Tag = null;
+            var oldRegion = _taskContextMenu.Region;
+            _taskContextMenu.Region = null;
+            oldRegion?.Dispose();
+        };
+    }
+
+    private void ApplyTaskContextMenuRoundedRegion()
+    {
+        if (_taskContextMenu.Width <= 1 || _taskContextMenu.Height <= 1)
+        {
+            return;
+        }
+
+        var maxRadius = Math.Min(_taskContextMenu.Width, _taskContextMenu.Height) / 2;
+        var radius = Math.Max(1, Math.Min(TaskContextMenuCornerRadius, maxRadius));
+        using var path = CreateRoundedRectPath(
+            new Rectangle(0, 0, _taskContextMenu.Width, _taskContextMenu.Height),
+            radius
+        );
+
+        var oldRegion = _taskContextMenu.Region;
+        _taskContextMenu.Region = new Region(path);
+        oldRegion?.Dispose();
+    }
+
+    private void OnTaskListMouseDown(object? sender, MouseEventArgs e)
+    {
+        if (e.Button == MouseButtons.Left)
+        {
+            _taskDragSourceIndex = _taskList.IndexFromPoint(e.Location);
+            _taskDragStartPoint = e.Location;
+            _taskDragInProgress = false;
+
+            if (_taskDragSourceIndex >= 0 && _taskDragSourceIndex < _tasks.Count)
+            {
+                _taskList.SelectedIndex = _taskDragSourceIndex;
+                if (IsTaskCompletionIndicatorHit(_taskDragSourceIndex, e.Location))
+                {
+                    ToggleTaskCompletion(_tasks[_taskDragSourceIndex].Id);
+                    _taskDragSourceIndex = -1;
+                    return;
+                }
+            }
+
+            return;
+        }
+
+        _taskDragSourceIndex = -1;
+        _taskDragInProgress = false;
+        if (e.Button != MouseButtons.Right)
+        {
+            return;
+        }
+
+        var index = _taskList.IndexFromPoint(e.Location);
+        if (index < 0 || index >= _tasks.Count)
+        {
+            return;
+        }
+
+        _taskList.SelectedIndex = index;
+        BindTaskContextMenuTarget(_tasks[index].Id);
+        UpdateTaskContextMenuItemState();
+        _taskContextMenu.Show(_taskList, e.Location);
+    }
+
+    private void BindTaskContextMenuTarget(Guid taskId)
+    {
+        _taskContextMenuTaskId = taskId;
+        _taskContextMenu.Tag = taskId;
+        _completeTaskMenuItem.Tag = taskId;
+        _deleteTaskMenuItem.Tag = taskId;
+    }
+
+    private void OnTaskListMouseMove(object? sender, MouseEventArgs e)
+    {
+        if ((e.Button & MouseButtons.Left) != MouseButtons.Left)
+        {
+            return;
+        }
+
+        if (_taskDragInProgress || _taskDragSourceIndex < 0 || _taskDragSourceIndex >= _tasks.Count)
+        {
+            return;
+        }
+
+        var dragSize = SystemInformation.DragSize;
+        var dragBounds = new Rectangle(
+            _taskDragStartPoint.X - dragSize.Width / 2,
+            _taskDragStartPoint.Y - dragSize.Height / 2,
+            dragSize.Width,
+            dragSize.Height
+        );
+        if (dragBounds.Contains(e.Location))
+        {
+            return;
+        }
+
+        _taskDragInProgress = true;
+        _taskList.DoDragDrop(_taskDragSourceIndex, DragDropEffects.Move);
+        _taskDragInProgress = false;
+    }
+
+    private void OnTaskListMouseUp(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left)
+        {
+            return;
+        }
+
+        _taskDragSourceIndex = -1;
+        _taskDragInProgress = false;
+    }
+
+    private void OnTaskListDragOver(object? sender, DragEventArgs e)
+    {
+        if (!e.Data!.GetDataPresent(typeof(int)))
+        {
+            e.Effect = DragDropEffects.None;
+            return;
+        }
+
+        var sourceIndex = (int)e.Data.GetData(typeof(int))!;
+        if (sourceIndex < 0 || sourceIndex >= _tasks.Count)
+        {
+            e.Effect = DragDropEffects.None;
+            return;
+        }
+
+        var targetIndex = ResolveTaskDropIndex(_taskList.PointToClient(new Point(e.X, e.Y)));
+        e.Effect = targetIndex >= 0 ? DragDropEffects.Move : DragDropEffects.None;
+    }
+
+    private void OnTaskListDragDrop(object? sender, DragEventArgs e)
+    {
+        if (!e.Data!.GetDataPresent(typeof(int)))
+        {
+            return;
+        }
+
+        var sourceIndex = (int)e.Data.GetData(typeof(int))!;
+        var targetIndex = ResolveTaskDropIndex(_taskList.PointToClient(new Point(e.X, e.Y)));
+        if (!WindowsTaskReorderHelper.Reorder(_tasks, sourceIndex, targetIndex))
+        {
+            return;
+        }
+
+        RefreshTaskList();
+        _taskList.SelectedIndex = Math.Clamp(targetIndex, 0, _tasks.Count - 1);
+        SavePersistedState();
+        RefreshView();
+    }
+
+    private int ResolveTaskDropIndex(Point point)
+    {
+        if (_tasks.Count == 0)
+        {
+            return -1;
+        }
+
+        var fromPoint = _taskList.IndexFromPoint(point);
+        if (fromPoint >= 0)
+        {
+            return fromPoint;
+        }
+
+        if (point.Y <= 0)
+        {
+            return 0;
+        }
+
+        if (point.Y >= _taskList.ClientSize.Height)
+        {
+            return _tasks.Count - 1;
+        }
+
+        var estimated = point.Y / Math.Max(1, _taskList.ItemHeight);
+        return Math.Clamp(estimated, 0, _tasks.Count - 1);
+    }
+
+    private void UpdateTaskContextMenuItemState()
+    {
+        var task = GetContextMenuTask(_taskContextMenuTaskId);
+        var isCompleted = task?.IsCompleted == true;
+
+        _completeTaskMenuItem.Text = isCompleted
+            ? T("task.mark.undone")
+            : T("task.mark.done");
+        _deleteTaskMenuItem.Text = T("task.delete.current");
+        _completeTaskMenuItem.Enabled = task is not null;
+        _deleteTaskMenuItem.Enabled = task is not null;
+    }
+
+    private string T(string key, params object[] args)
+        => WindowsUiText.Get(key, _appLanguage, args);
+
+    private WinTask? GetContextMenuTask(Guid? taskId)
+        => taskId.HasValue ? _tasks.FirstOrDefault(task => task.Id == taskId.Value) : null;
+
     private void AddTask()
     {
         var title = _newTaskInput.Text.Trim();
@@ -630,31 +862,115 @@ internal sealed class MainForm : Form
         RefreshView();
     }
 
-    private void DeleteSelectedTask()
+    private void DeleteSelectedTask(bool requireConfirmation = true)
     {
-        if (_taskList.SelectedIndex < 0 || _taskList.SelectedIndex >= _tasks.Count)
+        DeleteTaskAt(_taskList.SelectedIndex, requireConfirmation);
+    }
+
+    private void DeleteTaskAt(int index, bool requireConfirmation)
+    {
+        if (index < 0 || index >= _tasks.Count)
         {
             return;
         }
 
-        var selected = _tasks[_taskList.SelectedIndex];
+        var selected = _tasks[index];
+        if (requireConfirmation && !ConfirmDeleteTask(selected))
+        {
+            return;
+        }
+
         if (_sessionTaskId == selected.Id)
         {
             ResetTimer();
         }
 
-        _tasks.RemoveAt(_taskList.SelectedIndex);
+        _tasks.RemoveAt(index);
         RefreshTaskList();
         if (_tasks.Count > 0)
         {
-            _taskList.SelectedIndex = Math.Min(_taskList.SelectedIndex, _tasks.Count - 1);
+            _taskList.SelectedIndex = Math.Min(index, _tasks.Count - 1);
         }
         SavePersistedState();
         RefreshView();
     }
 
+    private bool ConfirmDeleteTask(WinTask task)
+    {
+        var result = MessageBox.Show(
+            this,
+            T("alert.delete_task.message", task.Title),
+            T("alert.delete_task.title"),
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2
+        );
+
+        return result == DialogResult.Yes;
+    }
+
+    private void ToggleTaskCompletion(Guid? taskId)
+    {
+        if (!taskId.HasValue)
+        {
+            return;
+        }
+
+        var index = _tasks.FindIndex(task => task.Id == taskId.Value);
+        if (index < 0 || index >= _tasks.Count)
+        {
+            return;
+        }
+
+        var task = _tasks[index];
+        task.IsCompleted = !task.IsCompleted;
+        SavePersistedState();
+        RefreshTaskList();
+        _taskList.SelectedIndex = index;
+        RefreshView();
+    }
+
+    private void DeleteTaskById(Guid? taskId, bool requireConfirmation)
+    {
+        if (!taskId.HasValue)
+        {
+            return;
+        }
+
+        var index = _tasks.FindIndex(task => task.Id == taskId.Value);
+        DeleteTaskAt(index, requireConfirmation);
+    }
+
+    private void OnCompleteTaskMenuItemClick(object? sender, EventArgs e)
+    {
+        _ = e;
+        var menuItem = sender as ToolStripItem;
+        var taskId = WindowsTaskContextMenuTargetResolver.Resolve(
+            _taskContextMenuTaskId,
+            menuItem?.Tag,
+            menuItem?.Owner?.Tag,
+            GetSelectedTask()?.Id
+        );
+        ToggleTaskCompletion(taskId);
+    }
+
+    private void OnDeleteTaskMenuItemClick(object? sender, EventArgs e)
+    {
+        _ = e;
+        var menuItem = sender as ToolStripItem;
+        var taskId = WindowsTaskContextMenuTargetResolver.Resolve(
+            _taskContextMenuTaskId,
+            menuItem?.Tag,
+            menuItem?.Owner?.Tag,
+            GetSelectedTask()?.Id
+        );
+        DeleteTaskById(taskId, requireConfirmation: true);
+    }
+
     private void RefreshTaskList()
     {
+        EnsureTaskListItemHeight();
+
         var selectedId = GetSelectedTask()?.Id;
         _taskList.BeginUpdate();
         _taskList.Items.Clear();
@@ -663,6 +979,7 @@ internal sealed class MainForm : Form
             _taskList.Items.Add(task);
         }
         _taskList.EndUpdate();
+        UpdateTaskListHorizontalExtent();
 
         if (selectedId.HasValue)
         {
@@ -672,6 +989,36 @@ internal sealed class MainForm : Form
                 _taskList.SelectedIndex = index;
             }
         }
+    }
+
+    private void UpdateTaskListHorizontalExtent()
+    {
+        var maxWidth = Math.Max(_taskList.ClientSize.Width, 0);
+        if (_tasks.Count == 0)
+        {
+            _taskList.HorizontalExtent = maxWidth;
+            return;
+        }
+
+        using var graphics = _taskList.CreateGraphics();
+        using var titleFont = new Font("Segoe UI", 10F, FontStyle.Bold);
+        using var metaFont = new Font("Segoe UI", 8.5F, FontStyle.Regular);
+        foreach (var task in _tasks)
+        {
+            var titleWidth = TextRenderer.MeasureText(
+                graphics,
+                task.Title,
+                titleFont,
+                Size.Empty,
+                TextFormatFlags.SingleLine | TextFormatFlags.NoPadding
+            ).Width;
+            var metaWidth = MeasureTaskMetaWidth(graphics, metaFont, task.CompletedPomodoros);
+
+            var rowWidth = Math.Max(titleWidth, metaWidth) + 68;
+            maxWidth = Math.Max(maxWidth, rowWidth);
+        }
+
+        _taskList.HorizontalExtent = maxWidth;
     }
 
     private void StartOrResumeFocus()
@@ -692,7 +1039,13 @@ internal sealed class MainForm : Form
         var selected = GetSelectedTask();
         if (selected is null)
         {
-            MessageBox.Show(this, "Please select a task first.", "Tomato", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(
+                this,
+                T("alert.select_task.message"),
+                T("alert.select_task.title"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information
+            );
             return;
         }
 
@@ -739,11 +1092,13 @@ internal sealed class MainForm : Form
                 onReset: ResetTimer,
                 initialSize: _floatingWindowSize,
                 initialThemeMode: _themeMode,
+                initialOpacity: _floatingWindowOpacity,
                 onResizeCommitted: HandleFloatingWindowResizeCommitted
             );
         }
 
         _floatingForm.SetThemeMode(_themeMode);
+        _floatingForm.SetWindowOpacity(_floatingWindowOpacity);
         UpdateFloatingWindow();
         PositionFloatingWindow(_floatingForm);
 
@@ -793,7 +1148,14 @@ internal sealed class MainForm : Form
 
     private void OpenSettings()
     {
-        using var dialog = new SettingsForm(_workMinutes, _shortBreakMinutes, _longBreakMinutes, _themeMode);
+        using var dialog = new SettingsForm(
+            _workMinutes,
+            _shortBreakMinutes,
+            _longBreakMinutes,
+            _floatingWindowOpacity,
+            _appLanguage,
+            _themeMode
+        );
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
             return;
@@ -802,7 +1164,13 @@ internal sealed class MainForm : Form
         _workMinutes = dialog.WorkMinutes;
         _shortBreakMinutes = dialog.ShortBreakMinutes;
         _longBreakMinutes = dialog.LongBreakMinutes;
+        _floatingWindowOpacity = dialog.FloatingWindowOpacity;
+        _appLanguage = dialog.AppLanguage;
         SavePersistedState();
+        if (_floatingForm is { IsDisposed: false })
+        {
+            _floatingForm.SetWindowOpacity(_floatingWindowOpacity);
+        }
 
         if (_engine.Snapshot.Phase == PomodoroPhase.Idle)
         {
@@ -836,7 +1204,13 @@ internal sealed class MainForm : Form
                 RestoreMainWindow();
             }
             var owner = _floatingForm is { Visible: true } ? (IWin32Window)_floatingForm : this;
-            MessageBox.Show(owner, "Session completed.", "Tomato", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(
+                owner,
+                T("alert.session_completed.message"),
+                T("alert.session_completed.title"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information
+            );
         }
 
         RefreshView();
@@ -867,11 +1241,13 @@ internal sealed class MainForm : Form
         _shortBreakMinutes = state.ShortBreakMinutes;
         _longBreakMinutes = state.LongBreakMinutes;
         _floatingWindowSize = new Size(state.FloatingWindowWidth, state.FloatingWindowHeight);
+        _floatingWindowOpacity = state.FloatingWindowOpacity;
+        _appLanguage = state.AppLanguage;
 
         _tasks.Clear();
         foreach (var task in state.Tasks)
         {
-            _tasks.Add(new WinTask(task.Id, task.Title, task.CompletedPomodoros));
+            _tasks.Add(new WinTask(task.Id, task.Title, task.CompletedPomodoros, task.IsCompleted));
         }
     }
 
@@ -885,12 +1261,15 @@ internal sealed class MainForm : Form
             LongBreakMinutes = _longBreakMinutes,
             FloatingWindowWidth = _floatingWindowSize.Width,
             FloatingWindowHeight = _floatingWindowSize.Height,
+            FloatingWindowOpacity = _floatingWindowOpacity,
+            AppLanguage = _appLanguage,
             Tasks = _tasks
                 .Select(task => new WindowsTaskState
                 {
                     Id = task.Id,
                     Title = task.Title,
-                    CompletedPomodoros = task.CompletedPomodoros
+                    CompletedPomodoros = task.CompletedPomodoros,
+                    IsCompleted = task.IsCompleted
                 })
                 .ToList()
         };
@@ -935,15 +1314,20 @@ internal sealed class MainForm : Form
     private void RefreshView()
     {
         _taskCountBadge.Text = _tasks.Count.ToString();
+        _taskSectionTitleLabel.Text = T("task.section_title");
+        _settingsButton.Text = T("settings.open");
+        _themeButton.Text = T("theme.switch");
+        _deleteTaskButton.Text = T("common.delete");
+        _newTaskInput.PlaceholderText = T("task.add.placeholder");
 
         var snapshot = _engine.Snapshot;
         var selectedTask = GetSelectedTask();
         var displayTask = GetDisplayTask();
 
-        _taskTitleLabel.Text = displayTask?.Title ?? "Select a task";
+        _taskTitleLabel.Text = displayTask?.Title ?? T("task.select.prompt");
         _taskStatLabel.Text = displayTask is null
-            ? "Pick a task and start focus"
-            : $"{displayTask.CompletedPomodoros}x completed";
+            ? T("task.select.subtitle")
+            : T("task.completed.count", displayTask.CompletedPomodoros);
 
         var isIdle = snapshot.Phase == PomodoroPhase.Idle;
         var isRunning = snapshot.IsRunning;
@@ -951,10 +1335,10 @@ internal sealed class MainForm : Form
 
         var phaseText = snapshot.Phase switch
         {
-            PomodoroPhase.Work => "Focusing...",
-            PomodoroPhase.ShortBreak => "Short Break",
-            PomodoroPhase.LongBreak => "Long Break",
-            _ => "Ready"
+            PomodoroPhase.Work => T("timer.phase.work"),
+            PomodoroPhase.ShortBreak => T("timer.phase.short_break"),
+            PomodoroPhase.LongBreak => T("timer.phase.long_break"),
+            _ => T("timer.phase.ready")
         };
 
         var phaseColor = GetPhaseColor(snapshot.Phase);
@@ -987,9 +1371,12 @@ internal sealed class MainForm : Form
         _ringControl.RemainingRatio = ratio;
 
         _focusButton.Text = ResolveFocusButtonText(snapshot, _sessionTaskId.HasValue);
+        _resetButton.Text = T("common.reset");
+        _floatButton.Text = T("common.float");
         _focusButton.Enabled = selectedTask is not null || isRunning || hasResumableSession;
         _resetButton.Enabled = !isIdle || displayTask is not null;
         _floatButton.Enabled = isRunning || hasResumableSession;
+        ApplyTaskContextMenuTheme();
         if (_lastTaskListThemeMode != themeMode)
         {
             _taskList.Invalidate();
@@ -1015,29 +1402,31 @@ internal sealed class MainForm : Form
 
         var snapshot = _engine.Snapshot;
         var displayTask = GetDisplayTask();
+        _floatingForm.SetWindowOpacity(_floatingWindowOpacity);
         _floatingForm.UpdateState(
             snapshot: snapshot,
-            taskTitle: displayTask?.Title ?? "Focus",
+            taskTitle: displayTask?.Title ?? T("floating.task.fallback"),
             phaseColor: GetPhaseColor(snapshot.Phase),
             fallbackWorkSeconds: _workMinutes * 60,
             hasSessionTask: _sessionTaskId.HasValue,
-            themeMode: _themeMode
+            themeMode: _themeMode,
+            appLanguage: _appLanguage
         );
     }
 
-    private static string ResolveFocusButtonText(PomodoroSnapshot snapshot, bool hasSessionTask)
+    private string ResolveFocusButtonText(PomodoroSnapshot snapshot, bool hasSessionTask)
     {
         if (snapshot.IsRunning)
         {
-            return "Pause";
+            return T("common.pause");
         }
 
         if (hasSessionTask && snapshot.Phase != PomodoroPhase.Idle)
         {
-            return "Run";
+            return T("common.run");
         }
 
-        return "Focus";
+        return T("common.focus");
     }
 
     private Color GetPhaseColor(PomodoroPhase phase)
@@ -1165,6 +1554,252 @@ internal sealed class MainForm : Form
         return ColorFromRgb(WindowsThemeCatalog.PhaseAccents(_themeMode).Work);
     }
 
+    private ContextMenuThemeColors GetTaskContextMenuThemeColors()
+    {
+        return _themeMode switch
+        {
+            WindowsThemeMode.BusinessMotion => new ContextMenuThemeColors(
+                Color.FromArgb(244, 248, 252),
+                UiPalette.TextPrimary,
+                Color.FromArgb(228, 236, 245),
+                Color.FromArgb(203, 215, 229)
+            ),
+            WindowsThemeMode.GreenFocus => new ContextMenuThemeColors(
+                Color.FromArgb(239, 246, 241),
+                UiPalette.TextPrimary,
+                Color.FromArgb(220, 233, 224),
+                Color.FromArgb(191, 212, 198)
+            ),
+            _ => new ContextMenuThemeColors(
+                Color.FromArgb(253, 247, 244),
+                UiPalette.TextPrimary,
+                Color.FromArgb(246, 228, 221),
+                Color.FromArgb(234, 206, 196)
+            )
+        };
+    }
+
+    private void ApplyTaskContextMenuTheme()
+    {
+        var colors = GetTaskContextMenuThemeColors();
+        _taskContextMenu.Renderer = new ToolStripProfessionalRenderer(new ContextMenuColorTable(colors));
+        _taskContextMenu.BackColor = colors.Background;
+        _taskContextMenu.ForeColor = colors.Foreground;
+        foreach (ToolStripItem item in _taskContextMenu.Items)
+        {
+            item.BackColor = colors.Background;
+            item.ForeColor = colors.Foreground;
+        }
+        UpdateTaskContextMenuItemState();
+    }
+
+    private bool IsTaskCompletionIndicatorHit(int taskIndex, Point mouseLocation)
+    {
+        if (taskIndex < 0 || taskIndex >= _tasks.Count)
+        {
+            return false;
+        }
+
+        var itemBounds = _taskList.GetItemRectangle(taskIndex);
+        var indicatorBounds = GetTaskCompletionIndicatorBounds(itemBounds);
+        return indicatorBounds.Contains(mouseLocation);
+    }
+
+    private static Rectangle GetTaskRowContentBounds(Rectangle itemBounds)
+        => new Rectangle(itemBounds.X + 4, itemBounds.Y + 4, itemBounds.Width - 8, itemBounds.Height - 8);
+
+    private static Rectangle GetTaskCompletionIndicatorBounds(Rectangle itemBounds)
+    {
+        var rowBounds = GetTaskRowContentBounds(itemBounds);
+        const int indicatorSize = 18;
+        var x = rowBounds.X + 12;
+        var y = rowBounds.Y + (rowBounds.Height - indicatorSize) / 2;
+        return new Rectangle(x, y, indicatorSize, indicatorSize);
+    }
+
+    private static Color BlendColor(Color from, Color to, float t)
+    {
+        t = Math.Clamp(t, 0F, 1F);
+        static int Blend(int a, int b, float amount)
+            => (int)Math.Clamp(MathF.Round(a + (b - a) * amount), 0, 255);
+
+        return Color.FromArgb(
+            Blend(from.R, to.R, t),
+            Blend(from.G, to.G, t),
+            Blend(from.B, to.B, t)
+        );
+    }
+
+    private int MeasureTaskMetaWidth(Graphics graphics, Font metaFont, int completedPomodoros)
+    {
+        if (completedPomodoros <= 0)
+        {
+            return 0;
+        }
+
+        var prefix = $"{completedPomodoros}x";
+        var prefixWidth = TextRenderer.MeasureText(
+            graphics,
+            prefix,
+            metaFont,
+            Size.Empty,
+            TextFormatFlags.SingleLine | TextFormatFlags.NoPadding
+        ).Width;
+        var metaLineHeight = TextRenderer.MeasureText(
+            graphics,
+            "Ag",
+            metaFont,
+            Size.Empty,
+            TextFormatFlags.SingleLine | TextFormatFlags.NoPadding
+        ).Height;
+
+        var iconSize = Math.Max(8, metaLineHeight - 2);
+        var iconCount = Math.Min(completedPomodoros, 5);
+        const int prefixIconSpacing = 4;
+        const int iconGap = 2;
+        var iconsWidth = iconCount > 0
+            ? iconCount * iconSize + (iconCount - 1) * iconGap
+            : 0;
+        var overflowWidth = completedPomodoros > 5
+            ? TextRenderer.MeasureText(
+                graphics,
+                "+",
+                metaFont,
+                Size.Empty,
+                TextFormatFlags.SingleLine | TextFormatFlags.NoPadding
+            ).Width
+            : 0;
+
+        return prefixWidth + prefixIconSpacing + iconsWidth + overflowWidth;
+    }
+
+    private Color GetTomatoBadgeBodyColor()
+        => ColorFromRgb(WindowsThemeCatalog.PrimaryAccent(_themeMode));
+
+    private Color GetTomatoBadgeLeafColor()
+        => ColorFromRgb(WindowsThemeCatalog.PhaseAccents(_themeMode).ShortBreak);
+
+    private static void DrawTinyTomatoIcon(Graphics graphics, RectangleF bounds, Color bodyColor, Color leafColor)
+    {
+        using var bodyBrush = new SolidBrush(bodyColor);
+        graphics.FillEllipse(bodyBrush, bounds);
+
+        var leafWidth = bounds.Width * 0.36F;
+        var leafHeight = bounds.Height * 0.24F;
+        var leafX = bounds.X + (bounds.Width - leafWidth) / 2F;
+        var leafY = bounds.Y - bounds.Height * 0.35F;
+        var leafBounds = new Rectangle(
+            (int)MathF.Round(leafX),
+            (int)MathF.Round(leafY),
+            Math.Max(1, (int)MathF.Round(leafWidth)),
+            Math.Max(1, (int)MathF.Round(leafHeight))
+        );
+        using var leafPath = CreateRoundedRectPath(leafBounds, Math.Max(1, leafBounds.Height / 2));
+        using var leafBrush = new SolidBrush(leafColor);
+        graphics.FillPath(leafBrush, leafPath);
+    }
+
+    private void DrawTaskMeta(Graphics graphics, Rectangle rect, Font metaFont, Color textColor, int completedPomodoros)
+    {
+        if (completedPomodoros <= 0)
+        {
+            return;
+        }
+
+        var prefix = $"{completedPomodoros}x";
+        TextRenderer.DrawText(
+            graphics,
+            prefix,
+            metaFont,
+            rect,
+            textColor,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine
+        );
+
+        var prefixWidth = TextRenderer.MeasureText(
+            graphics,
+            prefix,
+            metaFont,
+            Size.Empty,
+            TextFormatFlags.SingleLine | TextFormatFlags.NoPadding
+        ).Width;
+        var metaLineHeight = TextRenderer.MeasureText(
+            graphics,
+            "Ag",
+            metaFont,
+            Size.Empty,
+            TextFormatFlags.SingleLine | TextFormatFlags.NoPadding
+        ).Height;
+        var iconSize = Math.Max(8, metaLineHeight - 2);
+        const int prefixIconSpacing = 4;
+        const int iconGap = 2;
+
+        var iconX = rect.Left + prefixWidth + prefixIconSpacing;
+        var iconY = rect.Top + (rect.Height - iconSize) / 2F;
+        var bodyColor = GetTomatoBadgeBodyColor();
+        var leafColor = GetTomatoBadgeLeafColor();
+        var iconCount = Math.Min(completedPomodoros, 5);
+        for (var i = 0; i < iconCount; i++)
+        {
+            var x = iconX + i * (iconSize + iconGap);
+            DrawTinyTomatoIcon(
+                graphics,
+                new RectangleF(x, iconY, iconSize, iconSize),
+                bodyColor,
+                leafColor
+            );
+        }
+
+        if (completedPomodoros <= 5)
+        {
+            return;
+        }
+
+        var plusX = iconX + iconCount * (iconSize + iconGap);
+        var plusRect = new Rectangle(
+            plusX,
+            rect.Top,
+            Math.Max(8, rect.Right - plusX),
+            rect.Height
+        );
+        TextRenderer.DrawText(
+            graphics,
+            "+",
+            metaFont,
+            plusRect,
+            textColor,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine
+        );
+    }
+
+    private void EnsureTaskListItemHeight()
+    {
+        using var titleFont = new Font("Segoe UI", 10F, FontStyle.Bold);
+        using var metaFont = new Font("Segoe UI", 8.5F, FontStyle.Regular);
+        var titleHeight = TextRenderer.MeasureText(
+            "Ag",
+            titleFont,
+            Size.Empty,
+            TextFormatFlags.SingleLine | TextFormatFlags.NoPadding
+        ).Height;
+        var metaHeight = TextRenderer.MeasureText(
+            "Ag",
+            metaFont,
+            Size.Empty,
+            TextFormatFlags.SingleLine | TextFormatFlags.NoPadding
+        ).Height;
+
+        const int lineSpacing = 4;
+        const int contentVerticalPadding = 22;
+        var requiredHeight = titleHeight + metaHeight + lineSpacing + contentVerticalPadding;
+        var targetHeight = Math.Max(76, requiredHeight);
+        if (_taskList.ItemHeight != targetHeight)
+        {
+            _taskList.ItemHeight = targetHeight;
+            _taskList.Invalidate();
+        }
+    }
+
     private void OnDrawTaskItem(object? sender, DrawItemEventArgs e)
     {
         if (e.Index < 0 || e.Index >= _tasks.Count)
@@ -1177,24 +1812,75 @@ internal sealed class MainForm : Form
         var task = _tasks[e.Index];
         var selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
 
-        using var rowPath = CreateRoundedRectPath(
-            new Rectangle(e.Bounds.X + 4, e.Bounds.Y + 4, e.Bounds.Width - 8, e.Bounds.Height - 8),
-            10
-        );
+        var rowBounds = GetTaskRowContentBounds(e.Bounds);
+        using var rowPath = CreateRoundedRectPath(rowBounds, 10);
 
         var selectedRowColor = GetTaskRowSelectedColor();
         var rowBaseColor = GetTaskRowBaseColor();
-        using var rowBrush = new SolidBrush(selected ? selectedRowColor : rowBaseColor);
+        var rowColor = selected
+            ? selectedRowColor
+            : task.IsCompleted ? BlendColor(rowBaseColor, Color.White, 0.42F) : rowBaseColor;
+        using var rowBrush = new SolidBrush(rowColor);
         e.Graphics.FillPath(rowBrush, rowPath);
 
-        using var titleBrush = new SolidBrush(UiPalette.TextPrimary);
+        var titleColor = task.IsCompleted ? UiPalette.TextSecondary : UiPalette.TextPrimary;
+        using var titleBrush = new SolidBrush(titleColor);
         using var metaBrush = new SolidBrush(UiPalette.TextSecondary);
         using var titleFont = new Font("Segoe UI", 10F, FontStyle.Bold);
         using var metaFont = new Font("Segoe UI", 8.5F, FontStyle.Regular);
 
-        var textX = e.Bounds.X + 16;
-        var titleRect = new Rectangle(textX, e.Bounds.Y + 12, e.Bounds.Width - 50, 26);
-        var metaRect = new Rectangle(textX, e.Bounds.Y + 40, e.Bounds.Width - 50, 22);
+        var indicatorBounds = GetTaskCompletionIndicatorBounds(e.Bounds);
+        var indicatorAccent = GetTaskSelectionDotColor();
+        if (task.IsCompleted)
+        {
+            using var indicatorFill = new SolidBrush(indicatorAccent);
+            e.Graphics.FillEllipse(indicatorFill, indicatorBounds);
+
+            using var checkPen = new Pen(Color.White, 2F)
+            {
+                StartCap = LineCap.Round,
+                EndCap = LineCap.Round
+            };
+            var left = indicatorBounds.Left;
+            var top = indicatorBounds.Top;
+            var w = indicatorBounds.Width;
+            var h = indicatorBounds.Height;
+            var p1 = new PointF(left + w * 0.26F, top + h * 0.56F);
+            var p2 = new PointF(left + w * 0.44F, top + h * 0.72F);
+            var p3 = new PointF(left + w * 0.76F, top + h * 0.34F);
+            e.Graphics.DrawLines(checkPen, [p1, p2, p3]);
+        }
+        else
+        {
+            using var indicatorPen = new Pen(
+                selected ? indicatorAccent : BlendColor(UiPalette.TextSecondary, Color.White, 0.12F),
+                1.8F
+            );
+            e.Graphics.DrawEllipse(indicatorPen, indicatorBounds);
+        }
+
+        var textX = indicatorBounds.Right + 12;
+        var textWidth = Math.Max(0, rowBounds.Right - textX - 12);
+        var hasMeta = task.CompletedPomodoros > 0;
+        const int lineSpacing = 4;
+        var titleLineHeight = TextRenderer.MeasureText(
+            e.Graphics,
+            "Ag",
+            titleFont,
+            Size.Empty,
+            TextFormatFlags.SingleLine | TextFormatFlags.NoPadding
+        ).Height;
+        var metaLineHeight = TextRenderer.MeasureText(
+            e.Graphics,
+            "Ag",
+            metaFont,
+            Size.Empty,
+            TextFormatFlags.SingleLine | TextFormatFlags.NoPadding
+        ).Height;
+        var textBlockHeight = hasMeta ? titleLineHeight + lineSpacing + metaLineHeight : titleLineHeight;
+        var textTop = rowBounds.Top + Math.Max(0, (rowBounds.Height - textBlockHeight) / 2);
+        var titleRect = new Rectangle(textX, textTop, textWidth, titleLineHeight + 2);
+        var metaRect = new Rectangle(textX, titleRect.Bottom + lineSpacing, textWidth, metaLineHeight + 2);
         TextRenderer.DrawText(
             e.Graphics,
             task.Title,
@@ -1203,22 +1889,30 @@ internal sealed class MainForm : Form
             titleBrush.Color,
             TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine
         );
-        var metaText = task.CompletedPomodoros > 0 ? $"{task.CompletedPomodoros}x completed" : "No pomodoros yet";
-        TextRenderer.DrawText(
-            e.Graphics,
-            metaText,
-            metaFont,
-            metaRect,
-            metaBrush.Color,
-            TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine
-        );
 
-        if (selected)
+        if (task.IsCompleted)
         {
-            var accent = GetTaskSelectionDotColor();
-            using var dotBrush = new SolidBrush(accent);
-            e.Graphics.FillEllipse(dotBrush, e.Bounds.Right - 20, e.Bounds.Y + (e.Bounds.Height / 2F) - 4, 8, 8);
+            var measuredTitleWidth = TextRenderer.MeasureText(
+                e.Graphics,
+                task.Title,
+                titleFont,
+                Size.Empty,
+                TextFormatFlags.SingleLine | TextFormatFlags.NoPadding
+            ).Width;
+            var lineRight = Math.Min(titleRect.Right - 2, titleRect.Left + measuredTitleWidth);
+            if (lineRight > titleRect.Left + 4)
+            {
+                var lineY = titleRect.Top + (titleRect.Height / 2F);
+                using var strikePen = new Pen(BlendColor(titleBrush.Color, UiPalette.TextPrimary, 0.25F), 2F)
+                {
+                    StartCap = LineCap.Round,
+                    EndCap = LineCap.Round
+                };
+                e.Graphics.DrawLine(strikePen, titleRect.Left + 1, lineY, lineRight, lineY);
+            }
         }
+
+        DrawTaskMeta(e.Graphics, metaRect, metaFont, metaBrush.Color, task.CompletedPomodoros);
     }
 }
 
@@ -1284,6 +1978,7 @@ internal sealed class FloatingFocusForm : Form
         Action onReset,
         Size initialSize,
         WindowsThemeMode initialThemeMode,
+        double initialOpacity,
         Action<Size>? onResizeCommitted = null
     )
     {
@@ -1313,7 +2008,7 @@ internal sealed class FloatingFocusForm : Form
         Height = initialHeight;
         MinimumSize = new Size(WindowsAppState.MinFloatingWindowWidth, WindowsAppState.MinFloatingWindowHeight);
         BackColor = Color.FromArgb(242, 247, 252);
-        Opacity = 0.90D;
+        SetWindowOpacity(initialOpacity);
 
         var card = new GlassCardPanel
         {
@@ -1398,7 +2093,8 @@ internal sealed class FloatingFocusForm : Form
         Color phaseColor,
         int fallbackWorkSeconds,
         bool hasSessionTask,
-        WindowsThemeMode themeMode
+        WindowsThemeMode themeMode,
+        WindowsAppLanguage appLanguage
     )
     {
         var isIdle = snapshot.Phase == PomodoroPhase.Idle;
@@ -1410,10 +2106,10 @@ internal sealed class FloatingFocusForm : Form
 
         _phaseLabel.Text = snapshot.Phase switch
         {
-            PomodoroPhase.Work => "Focusing...",
-            PomodoroPhase.ShortBreak => "Short Break",
-            PomodoroPhase.LongBreak => "Long Break",
-            _ => "Ready"
+            PomodoroPhase.Work => WindowsUiText.Get("timer.phase.work", appLanguage),
+            PomodoroPhase.ShortBreak => WindowsUiText.Get("timer.phase.short_break", appLanguage),
+            PomodoroPhase.LongBreak => WindowsUiText.Get("timer.phase.long_break", appLanguage),
+            _ => WindowsUiText.Get("timer.phase.ready", appLanguage)
         };
         _phaseLabel.ForeColor = phaseColor;
         _phaseLabel.BackColor = CreateTagBackground(phaseColor, themeMode);
@@ -1444,6 +2140,11 @@ internal sealed class FloatingFocusForm : Form
             _ => Color.FromArgb(252, 244, 240)
         };
         Invalidate(true);
+    }
+
+    public void SetWindowOpacity(double opacity)
+    {
+        Opacity = Math.Clamp(opacity, WindowsAppState.MinFloatingWindowOpacity, WindowsAppState.MaxFloatingWindowOpacity);
     }
 
     private static Button CreateFloatingIconButton(string text, bool primary, int width, int height, float fontSize)
@@ -1715,21 +2416,36 @@ internal sealed class SettingsForm : Form
     private readonly NumericUpDown _workInput;
     private readonly NumericUpDown _shortBreakInput;
     private readonly NumericUpDown _longBreakInput;
+    private readonly NumericUpDown _opacityPercentInput;
+    private readonly ComboBox _languageInput;
 
     public int WorkMinutes => (int)_workInput.Value;
     public int ShortBreakMinutes => (int)_shortBreakInput.Value;
     public int LongBreakMinutes => (int)_longBreakInput.Value;
+    public double FloatingWindowOpacity => (double)_opacityPercentInput.Value / 100D;
+    public WindowsAppLanguage AppLanguage => _languageInput.SelectedIndex == 0
+        ? WindowsAppLanguage.Chinese
+        : WindowsAppLanguage.English;
 
-    public SettingsForm(int workMinutes, int shortBreakMinutes, int longBreakMinutes, WindowsThemeMode themeMode)
+    public SettingsForm(
+        int workMinutes,
+        int shortBreakMinutes,
+        int longBreakMinutes,
+        double floatingWindowOpacity,
+        WindowsAppLanguage appLanguage,
+        WindowsThemeMode themeMode
+    )
     {
-        Text = "Settings";
+        string T(string key, params object[] args) => WindowsUiText.Get(key, appLanguage, args);
+
+        Text = T("settings.title");
         Icon = AppIconProvider.GetAppIcon();
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MinimizeBox = false;
         MaximizeBox = false;
         ShowInTaskbar = false;
-        ClientSize = new Size(360, 250);
+        ClientSize = new Size(360, 338);
         BackColor = themeMode switch
         {
             WindowsThemeMode.BusinessMotion => Color.FromArgb(242, 247, 252),
@@ -1740,6 +2456,8 @@ internal sealed class SettingsForm : Form
         _workInput = CreateDurationInput(workMinutes, 1, 60);
         _shortBreakInput = CreateDurationInput(shortBreakMinutes, 1, 30);
         _longBreakInput = CreateDurationInput(longBreakMinutes, 1, 60);
+        _opacityPercentInput = CreateOpacityPercentInput(floatingWindowOpacity);
+        _languageInput = CreateLanguageInput(appLanguage, uiLanguage: appLanguage);
 
         var card = new GlassCardPanel
         {
@@ -1752,7 +2470,7 @@ internal sealed class SettingsForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            RowCount = 4,
+            RowCount = 6,
             BackColor = Color.Transparent
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62F));
@@ -1760,18 +2478,27 @@ internal sealed class SettingsForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
-        layout.Controls.Add(CreateSettingsLabel("Focus Duration"), 0, 0);
+        layout.Controls.Add(CreateSettingsLabel(T("settings.duration.focus")), 0, 0);
         layout.Controls.Add(_workInput, 1, 0);
-        layout.Controls.Add(CreateSettingsLabel("Short Break"), 0, 1);
+        layout.Controls.Add(CreateSettingsLabel(T("settings.duration.short_break")), 0, 1);
         layout.Controls.Add(_shortBreakInput, 1, 1);
-        layout.Controls.Add(CreateSettingsLabel("Long Break"), 0, 2);
+        layout.Controls.Add(CreateSettingsLabel(T("settings.duration.long_break")), 0, 2);
         layout.Controls.Add(_longBreakInput, 1, 2);
+        layout.Controls.Add(CreateSettingsLabel(T("settings.opacity")), 0, 3);
+        layout.Controls.Add(_opacityPercentInput, 1, 3);
+        layout.Controls.Add(CreateSettingsLabel(T("settings.language")), 0, 4);
+        layout.Controls.Add(_languageInput, 1, 4);
 
-        var doneButton = CreateDialogPrimaryButton("Done", themeMode);
+        var doneButton = CreateDialogPrimaryButton(T("settings.done"), themeMode);
         doneButton.Width = 96;
         doneButton.DialogResult = DialogResult.OK;
+        var resetButton = CreateDialogSecondaryButton(T("common.reset"), themeMode);
+        resetButton.Width = 96;
+        resetButton.Click += (_, _) => ResetInputsToDefaults();
 
         var buttonRow = new FlowLayoutPanel
         {
@@ -1780,13 +2507,27 @@ internal sealed class SettingsForm : Form
             BackColor = Color.Transparent
         };
         buttonRow.Controls.Add(doneButton);
+        buttonRow.Controls.Add(resetButton);
 
-        layout.Controls.Add(buttonRow, 0, 3);
+        layout.Controls.Add(buttonRow, 0, 5);
         layout.SetColumnSpan(buttonRow, 2);
 
         card.Controls.Add(layout);
         Controls.Add(card);
         AcceptButton = doneButton;
+    }
+
+    private void ResetInputsToDefaults()
+    {
+        var defaultState = WindowsAppState.Default;
+        _workInput.Value = defaultState.WorkMinutes;
+        _shortBreakInput.Value = defaultState.ShortBreakMinutes;
+        _longBreakInput.Value = defaultState.LongBreakMinutes;
+        _opacityPercentInput.Value = (decimal)Math.Round(
+            defaultState.FloatingWindowOpacity * 100D,
+            MidpointRounding.AwayFromZero
+        );
+        _languageInput.SelectedIndex = defaultState.AppLanguage == WindowsAppLanguage.Chinese ? 0 : 1;
     }
 
     private static Label CreateSettingsLabel(string text)
@@ -1818,6 +2559,22 @@ internal sealed class SettingsForm : Form
         return button;
     }
 
+    private static Button CreateDialogSecondaryButton(string text, WindowsThemeMode themeMode)
+    {
+        var button = new GlassActionButton(false)
+        {
+            Text = text,
+            Width = 100,
+            Height = 40,
+            AutoSize = false,
+            Font = new Font("Segoe UI", 10F, FontStyle.Bold),
+            ThemeMode = themeMode,
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+        RoundControl(button, 12);
+        return button;
+    }
+
     private static void RoundControl(Control control, int radius)
     {
         _ = control;
@@ -1836,6 +2593,47 @@ internal sealed class SettingsForm : Form
             Anchor = AnchorStyles.Left,
             Margin = new Padding(0, 4, 0, 8)
         };
+    }
+
+    private static NumericUpDown CreateOpacityPercentInput(double value)
+    {
+        var normalized = Math.Clamp(
+            value,
+            WindowsAppState.MinFloatingWindowOpacity,
+            WindowsAppState.MaxFloatingWindowOpacity
+        );
+
+        return new NumericUpDown
+        {
+            Minimum = 50,
+            Maximum = 100,
+            DecimalPlaces = 0,
+            Increment = 1,
+            Value = (decimal)Math.Round(normalized * 100D, MidpointRounding.AwayFromZero),
+            Width = 120,
+            Font = new Font("Segoe UI", 10F, FontStyle.Regular),
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 4, 0, 8)
+        };
+    }
+
+    private static ComboBox CreateLanguageInput(WindowsAppLanguage appLanguage, WindowsAppLanguage uiLanguage)
+    {
+        var input = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Width = 120,
+            Font = new Font("Segoe UI", 10F, FontStyle.Regular),
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 4, 0, 8)
+        };
+        input.Items.AddRange(new object[]
+        {
+            WindowsUiText.Get("language.chinese", uiLanguage),
+            WindowsUiText.Get("language.english", uiLanguage)
+        });
+        input.SelectedIndex = appLanguage == WindowsAppLanguage.Chinese ? 0 : 1;
+        return input;
     }
 }
 
@@ -2243,8 +3041,25 @@ internal sealed class GlassActionButton : Button
             }
             else
             {
-                using var fill = new SolidBrush(Color.FromArgb(234, 239, 245));
+                var (disabledFill, disabledBorder) = _themeMode switch
+                {
+                    WindowsThemeMode.BusinessMotion => (
+                        Color.FromArgb(232, 238, 245),
+                        Color.FromArgb(178, 188, 202, 218)
+                    ),
+                    WindowsThemeMode.GreenFocus => (
+                        Color.FromArgb(228, 239, 232),
+                        Color.FromArgb(182, 186, 204, 191)
+                    ),
+                    _ => (
+                        Color.FromArgb(234, 239, 245),
+                        Color.FromArgb(176, 194, 206, 220)
+                    )
+                };
+                using var fill = new SolidBrush(disabledFill);
+                using var border = new Pen(disabledBorder, 1F);
                 graphics.FillPath(fill, path);
+                graphics.DrawPath(border, path);
             }
             return;
         }
@@ -2337,7 +3152,7 @@ internal sealed class GlassActionButton : Button
 
         if (_themeMode == WindowsThemeMode.GreenFocus)
         {
-            return Color.FromArgb(142, 154, 146);
+            return Color.FromArgb(113, 143, 125);
         }
 
         return Color.FromArgb(155, 164, 176);
@@ -2761,18 +3576,51 @@ internal sealed class WinTask
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Title { get; set; }
     public int CompletedPomodoros { get; set; }
+    public bool IsCompleted { get; set; }
 
     public WinTask(string title)
-        : this(Guid.NewGuid(), title, 0)
+        : this(Guid.NewGuid(), title, 0, isCompleted: false)
     {
     }
 
-    public WinTask(Guid id, string title, int completedPomodoros)
+    public WinTask(Guid id, string title, int completedPomodoros, bool isCompleted)
     {
         Id = id == Guid.Empty ? Guid.NewGuid() : id;
         Title = title;
         CompletedPomodoros = Math.Max(0, completedPomodoros);
+        IsCompleted = isCompleted;
     }
+}
+
+internal readonly record struct ContextMenuThemeColors(
+    Color Background,
+    Color Foreground,
+    Color HoverBackground,
+    Color Border
+);
+
+internal sealed class ContextMenuColorTable : ProfessionalColorTable
+{
+    private readonly ContextMenuThemeColors _colors;
+
+    public ContextMenuColorTable(ContextMenuThemeColors colors)
+    {
+        UseSystemColors = false;
+        _colors = colors;
+    }
+
+    public override Color ToolStripDropDownBackground => _colors.Background;
+    public override Color MenuBorder => _colors.Border;
+    public override Color MenuItemBorder => _colors.Border;
+    public override Color MenuItemSelected => _colors.HoverBackground;
+    public override Color MenuItemSelectedGradientBegin => _colors.HoverBackground;
+    public override Color MenuItemSelectedGradientEnd => _colors.HoverBackground;
+    public override Color MenuItemPressedGradientBegin => _colors.HoverBackground;
+    public override Color MenuItemPressedGradientMiddle => _colors.HoverBackground;
+    public override Color MenuItemPressedGradientEnd => _colors.HoverBackground;
+    public override Color ImageMarginGradientBegin => _colors.Background;
+    public override Color ImageMarginGradientMiddle => _colors.Background;
+    public override Color ImageMarginGradientEnd => _colors.Background;
 }
 
 internal static class UiPalette
