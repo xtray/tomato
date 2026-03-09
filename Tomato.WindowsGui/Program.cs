@@ -165,6 +165,7 @@ internal sealed class MainForm : Form
         _taskList.DrawItem += OnDrawTaskItem;
         _taskList.SelectedIndexChanged += (_, _) => RefreshView();
         _taskList.MouseDown += OnTaskListMouseDown;
+        _taskList.MouseDoubleClick += OnTaskListMouseDoubleClick;
         _taskList.MouseMove += OnTaskListMouseMove;
         _taskList.MouseUp += OnTaskListMouseUp;
         _taskList.DragOver += OnTaskListDragOver;
@@ -759,6 +760,28 @@ internal sealed class MainForm : Form
 
         _taskDragSourceIndex = -1;
         _taskDragInProgress = false;
+    }
+
+    private void OnTaskListMouseDoubleClick(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left)
+        {
+            return;
+        }
+
+        var index = _taskList.IndexFromPoint(e.Location);
+        if (index < 0 || index >= _tasks.Count)
+        {
+            return;
+        }
+
+        _taskList.SelectedIndex = index;
+        if (!WindowsTaskDirectFocusGate.AllowsDirectFocus(_engine.Snapshot, _sessionTaskId.HasValue))
+        {
+            return;
+        }
+
+        StartOrResumeFocus();
     }
 
     private void OnTaskListDragOver(object? sender, DragEventArgs e)

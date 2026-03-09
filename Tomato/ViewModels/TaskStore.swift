@@ -174,6 +174,15 @@ class TaskStore: ObservableObject {
     func selectTask(_ task: PomodoroTask?) {
         selectedTask = task
     }
+
+    func startFocusSessionForDoubleClick(_ task: PomodoroTask) {
+        selectedTask = task
+
+        guard !isTimerRunning, sessionTaskID == nil else {
+            return
+        }
+        startFocusSession()
+    }
     
     func startFocusSession() {
         if isTimerRunning {

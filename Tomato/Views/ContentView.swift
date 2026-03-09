@@ -309,6 +309,10 @@ struct ContentView: View {
         .onTapGesture {
             selectedTaskID = task.id
         }
+        .onTapGesture(count: 2) {
+            selectedTaskID = task.id
+            taskStore.startFocusSessionForDoubleClick(task)
+        }
         .onDrag {
             draggedTaskID = task.id
             return NSItemProvider(object: task.id.uuidString as NSString)

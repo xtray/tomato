@@ -158,6 +158,74 @@ final class TaskStoreThemeTests: XCTestCase {
         XCTAssertEqual(store.focusControlState, .focus)
     }
 
+    func test_start_focus_for_task_when_idle_starts_session_and_shows_floating_window() {
+        UserDefaults.standard.removeObject(forKey: "tasks")
+
+        let store = TaskStore()
+        store.addTask(title: "Task A")
+        store.addTask(title: "Task B")
+
+        let taskB = store.tasks[1]
+
+        store.startFocusSessionForDoubleClick(taskB)
+
+        XCTAssertTrue(store.isTimerRunning)
+        XCTAssertEqual(store.sessionTaskID, taskB.id)
+        XCTAssertEqual(store.timerDisplayTask?.id, taskB.id)
+        XCTAssertTrue(store.showingFloatingWindow)
+        store.stopTimer()
+    }
+
+    func test_start_focus_for_task_when_paused_resumable_session_exists_does_not_replace_session() {
+        UserDefaults.standard.removeObject(forKey: "tasks")
+
+        let store = TaskStore()
+        store.addTask(title: "Task A")
+        store.addTask(title: "Task B")
+
+        let taskA = store.tasks[0]
+        let taskB = store.tasks[1]
+
+        store.selectTask(taskA)
+        store.startFocusSession()
+        store.remainingSeconds = store.workDuration - 30
+        let pausedRemaining = store.remainingSeconds
+        store.stopTimer()
+        let floatingWindowVisibility = store.showingFloatingWindow
+
+        store.startFocusSessionForDoubleClick(taskB)
+
+        XCTAssertFalse(store.isTimerRunning)
+        XCTAssertEqual(store.sessionTaskID, taskA.id)
+        XCTAssertEqual(store.timerDisplayTask?.id, taskA.id)
+        XCTAssertEqual(store.remainingSeconds, pausedRemaining)
+        XCTAssertEqual(store.showingFloatingWindow, floatingWindowVisibility)
+    }
+
+    func test_start_focus_for_task_when_session_is_running_does_not_replace_session() {
+        UserDefaults.standard.removeObject(forKey: "tasks")
+
+        let store = TaskStore()
+        store.addTask(title: "Task A")
+        store.addTask(title: "Task B")
+
+        let taskA = store.tasks[0]
+        let taskB = store.tasks[1]
+
+        store.selectTask(taskA)
+        store.startFocusSession()
+        let runningRemaining = store.remainingSeconds
+
+        store.startFocusSessionForDoubleClick(taskB)
+
+        XCTAssertTrue(store.isTimerRunning)
+        XCTAssertEqual(store.sessionTaskID, taskA.id)
+        XCTAssertEqual(store.timerDisplayTask?.id, taskA.id)
+        XCTAssertEqual(store.remainingSeconds, runningRemaining)
+        XCTAssertTrue(store.showingFloatingWindow)
+        store.stopTimer()
+    }
+
     func test_task_store_restores_task_and_completed_pomodoro_count_from_persistence() throws {
         let taskID = UUID()
         let persistedTasks = [PomodoroTask(id: taskID, title: "Task A", completedPomodoros: 3, isCompleted: false)]
