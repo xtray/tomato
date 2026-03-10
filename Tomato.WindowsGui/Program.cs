@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
+using System.Media;
 using Tomato.WindowsCore;
 
 namespace Tomato.WindowsGui;
@@ -18,12 +19,40 @@ internal static class Program
 
 internal static class AppIconProvider
 {
-    private static Icon? _cached;
+    private const string IconResourceName = "Tomato.WindowsGui.Resources.tomato.ico";
+    private static byte[]? _cachedIconBytes;
 
-    public static Icon? GetAppIcon()
+    public static Icon? CreateAppIcon()
     {
-        _cached ??= Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-        return _cached;
+        var iconBytes = GetIconBytes();
+        if (iconBytes is { Length: > 0 })
+        {
+            using var stream = new MemoryStream(iconBytes, writable: false);
+            using var icon = new Icon(stream);
+            return (Icon)icon.Clone();
+        }
+
+        using var extractedIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+        return extractedIcon is null ? null : (Icon)extractedIcon.Clone();
+    }
+
+    private static byte[]? GetIconBytes()
+    {
+        if (_cachedIconBytes is not null)
+        {
+            return _cachedIconBytes;
+        }
+
+        using var stream = typeof(Program).Assembly.GetManifestResourceStream(IconResourceName);
+        if (stream is null)
+        {
+            return null;
+        }
+
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        _cachedIconBytes = buffer.ToArray();
+        return _cachedIconBytes;
     }
 }
 
@@ -31,11 +60,15 @@ internal sealed class MainForm : Form
 {
     private const int MainWindowCornerRadius = 24;
     private const int TaskContextMenuCornerRadius = 10;
+    private const int WmSysCommand = 0x0112;
+    private const int ScMinimize = 0xF020;
+    private const int ScRestore = 0xF120;
 
     private readonly PomodoroEngine _engine = new();
     private readonly WindowsAppStateStore _stateStore = new(WindowsAppStateStore.DefaultPath());
     private readonly System.Windows.Forms.Timer _tickTimer = new() { Interval = 1000 };
     private FloatingFocusForm? _floatingForm;
+    private Icon? _ownedIcon;
 
     private readonly List<WinTask> _tasks = [];
     private Guid? _sessionTaskId;
@@ -48,6 +81,8 @@ internal sealed class MainForm : Form
         WindowsAppState.DefaultFloatingWindowHeight
     );
     private double _floatingWindowOpacity = WindowsAppState.DefaultFloatingWindowOpacity;
+    private bool _completionChimesEnabled = true;
+    private double _completionChimeVolume = WindowsAppState.DefaultCompletionChimeVolume;
 
     private readonly GradientBackgroundPanel _background = new() { Dock = DockStyle.Fill };
     private readonly Panel _titleBar = new()
@@ -150,17 +185,30 @@ internal sealed class MainForm : Form
     private readonly Button _resetButton = CreateActionButton(string.Empty, false);
     private readonly Button _floatButton = CreateActionButton(string.Empty, false);
 
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            var createParams = base.CreateParams;
+            createParams.Style = WindowsTaskbarWindowStyles.EnsureTaskbarToggleStyles(createParams.Style);
+            return createParams;
+        }
+    }
+
     public MainForm()
     {
         LoadPersistedState();
 
         Text = string.Empty;
-        Icon = AppIconProvider.GetAppIcon();
+        ApplyOwnedIcon();
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(980, 600);
         Size = new Size(1080, 680);
         BackColor = UiPalette.Window;
+        MinimizeBox = true;
+        MaximizeBox = true;
+        ShowIcon = true;
 
         _taskList.DrawItem += OnDrawTaskItem;
         _taskList.SelectedIndexChanged += (_, _) => RefreshView();
@@ -209,6 +257,7 @@ internal sealed class MainForm : Form
                 _floatingForm.Close();
             }
         };
+        FormClosed += (_, _) => ReleaseOwnedIcon();
 
         RefreshTaskList();
         if (_tasks.Count > 0)
@@ -633,6 +682,53 @@ internal sealed class MainForm : Form
         Region = new Region(path);
     }
 
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        ApplyOwnedIcon();
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WmSysCommand)
+        {
+            var command = (int)(m.WParam.ToInt64() & 0xFFF0);
+            if (command == ScMinimize)
+            {
+                MinimizeMainWindow();
+                return;
+            }
+
+            if (command == ScRestore)
+            {
+                RestoreMainWindow();
+                return;
+            }
+        }
+
+        base.WndProc(ref m);
+    }
+
+    private void ApplyOwnedIcon()
+    {
+        var nextIcon = AppIconProvider.CreateAppIcon();
+        if (nextIcon is null)
+        {
+            return;
+        }
+
+        var previousIcon = _ownedIcon;
+        _ownedIcon = nextIcon;
+        Icon = nextIcon;
+        previousIcon?.Dispose();
+    }
+
+    private void ReleaseOwnedIcon()
+    {
+        _ownedIcon?.Dispose();
+        _ownedIcon = null;
+    }
+
     private void ConfigureTaskContextMenu()
     {
         _completeTaskMenuItem.Text = T("task.mark.done");
@@ -776,8 +872,23 @@ internal sealed class MainForm : Form
         }
 
         _taskList.SelectedIndex = index;
-        if (!WindowsTaskDirectFocusGate.AllowsDirectFocus(_engine.Snapshot, _sessionTaskId.HasValue))
+        var clickedTask = _tasks[index];
+        // ResolveDoubleClickAction: same-task double-click can reopen the current floating window.
+        var action = WindowsTaskDoubleClickActionResolver.Resolve(
+            _engine.Snapshot,
+            _sessionTaskId,
+            clickedTask.Id
+        );
+
+        if (action == WindowsTaskDoubleClickAction.None)
         {
+            return;
+        }
+
+        if (action == WindowsTaskDoubleClickAction.ReopenFloatingWindow)
+        {
+            ShowFloatingFocusWindow();
+            RefreshView();
             return;
         }
 
@@ -1086,6 +1197,14 @@ internal sealed class MainForm : Form
         RefreshView();
     }
 
+    private void MinimizeMainWindow()
+    {
+        if (WindowState != FormWindowState.Minimized)
+        {
+            WindowState = FormWindowState.Minimized;
+        }
+    }
+
     private void ResetTimer()
     {
         _tickTimer.Stop();
@@ -1132,6 +1251,8 @@ internal sealed class MainForm : Form
 
     private void RestoreMainWindow()
     {
+        ApplyOwnedIcon();
+
         if (WindowState == FormWindowState.Minimized)
         {
             WindowState = FormWindowState.Normal;
@@ -1157,7 +1278,21 @@ internal sealed class MainForm : Form
                 return;
             }
             RefreshView();
+            if (_taskList.IsHandleCreated && _taskList.CanFocus)
+            {
+                _taskList.Focus();
+            }
         }));
+    }
+
+    private void FocusTaskListIfPossible()
+    {
+        if (IsDisposed || !Visible || !_taskList.IsHandleCreated || !_taskList.CanFocus)
+        {
+            return;
+        }
+
+        _taskList.Focus();
     }
 
     private static void PositionFloatingWindow(Form floatingForm)
@@ -1176,6 +1311,8 @@ internal sealed class MainForm : Form
             _shortBreakMinutes,
             _longBreakMinutes,
             _floatingWindowOpacity,
+            _completionChimesEnabled,
+            _completionChimeVolume,
             _appLanguage,
             _themeMode
         );
@@ -1188,6 +1325,8 @@ internal sealed class MainForm : Form
         _shortBreakMinutes = dialog.ShortBreakMinutes;
         _longBreakMinutes = dialog.LongBreakMinutes;
         _floatingWindowOpacity = dialog.FloatingWindowOpacity;
+        _completionChimesEnabled = dialog.CompletionChimesEnabled;
+        _completionChimeVolume = dialog.CompletionChimeVolume;
         _appLanguage = dialog.AppLanguage;
         SavePersistedState();
         if (_floatingForm is { IsDisposed: false })
@@ -1207,6 +1346,9 @@ internal sealed class MainForm : Form
         var before = _engine.Snapshot;
         _engine.Tick();
         var after = _engine.Snapshot;
+        var completionAudioEvent = WindowsTimerCompletionAudioEventResolver.Resolve(before, after);
+
+        PlayCompletionChime(completionAudioEvent);
 
         if (before.Phase == PomodoroPhase.Work &&
             (after.Phase == PomodoroPhase.ShortBreak || after.Phase == PomodoroPhase.LongBreak))
@@ -1234,6 +1376,7 @@ internal sealed class MainForm : Form
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information
             );
+            BeginInvoke((Action)FocusTaskListIfPossible);
         }
 
         RefreshView();
@@ -1265,6 +1408,8 @@ internal sealed class MainForm : Form
         _longBreakMinutes = state.LongBreakMinutes;
         _floatingWindowSize = new Size(state.FloatingWindowWidth, state.FloatingWindowHeight);
         _floatingWindowOpacity = state.FloatingWindowOpacity;
+        _completionChimesEnabled = state.CompletionChimesEnabled;
+        _completionChimeVolume = state.CompletionChimeVolume;
         _appLanguage = state.AppLanguage;
 
         _tasks.Clear();
@@ -1285,6 +1430,8 @@ internal sealed class MainForm : Form
             FloatingWindowWidth = _floatingWindowSize.Width,
             FloatingWindowHeight = _floatingWindowSize.Height,
             FloatingWindowOpacity = _floatingWindowOpacity,
+            CompletionChimesEnabled = _completionChimesEnabled,
+            CompletionChimeVolume = _completionChimeVolume,
             AppLanguage = _appLanguage,
             Tasks = _tasks
                 .Select(task => new WindowsTaskState
@@ -1334,6 +1481,35 @@ internal sealed class MainForm : Form
         return GetSelectedTask();
     }
 
+    private void PlayCompletionChime(WindowsTimerCompletionAudioEvent audioEvent)
+    {
+        if (!_completionChimesEnabled || audioEvent == WindowsTimerCompletionAudioEvent.None)
+        {
+            return;
+        }
+
+        var waveData = WindowsCompletionChime.CreateWaveData(audioEvent, _completionChimeVolume);
+        if (waveData.Length == 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                using var stream = new MemoryStream(waveData, writable: false);
+                using var player = new SoundPlayer(stream);
+                player.Load();
+                player.PlaySync();
+            }
+            catch
+            {
+                // Best-effort playback only.
+            }
+        });
+    }
+
     private void RefreshView()
     {
         _taskCountBadge.Text = _tasks.Count.ToString();
@@ -1356,13 +1532,7 @@ internal sealed class MainForm : Form
         var isRunning = snapshot.IsRunning;
         var hasResumableSession = !isRunning && !isIdle && _sessionTaskId.HasValue;
 
-        var phaseText = snapshot.Phase switch
-        {
-            PomodoroPhase.Work => T("timer.phase.work"),
-            PomodoroPhase.ShortBreak => T("timer.phase.short_break"),
-            PomodoroPhase.LongBreak => T("timer.phase.long_break"),
-            _ => T("timer.phase.ready")
-        };
+        var phaseText = T(WindowsTimerStatusText.ResolveKey(snapshot, _sessionTaskId.HasValue));
 
         var phaseColor = GetPhaseColor(snapshot.Phase);
         var themeMode = _themeMode;
@@ -1947,6 +2117,7 @@ internal sealed class FloatingFocusForm : Form
     private readonly Action _onFocusToggle;
     private readonly Action _onReset;
     private readonly Action<Size>? _onResizeCommitted;
+    private Icon? _ownedIcon;
     private WindowsThemeMode _themeMode = WindowsThemeMode.WarmVivid;
     private bool _dragging;
     private bool _resizingFromBottomLeft;
@@ -2022,7 +2193,7 @@ internal sealed class FloatingFocusForm : Form
         );
 
         Text = "Tomato Focus";
-        Icon = AppIconProvider.GetAppIcon();
+        ApplyOwnedIcon();
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = false;
@@ -2108,6 +2279,7 @@ internal sealed class FloatingFocusForm : Form
         EnableDrag(this);
         DpiChanged += OnDpiChanged;
         MouseCaptureChanged += OnFloatingMouseCaptureChanged;
+        FormClosed += (_, _) => ReleaseOwnedIcon();
     }
 
     public void UpdateState(
@@ -2127,13 +2299,10 @@ internal sealed class FloatingFocusForm : Form
 
         SetThemeMode(themeMode);
 
-        _phaseLabel.Text = snapshot.Phase switch
-        {
-            PomodoroPhase.Work => WindowsUiText.Get("timer.phase.work", appLanguage),
-            PomodoroPhase.ShortBreak => WindowsUiText.Get("timer.phase.short_break", appLanguage),
-            PomodoroPhase.LongBreak => WindowsUiText.Get("timer.phase.long_break", appLanguage),
-            _ => WindowsUiText.Get("timer.phase.ready", appLanguage)
-        };
+        _phaseLabel.Text = WindowsUiText.Get(
+            WindowsTimerStatusText.ResolveKey(snapshot, hasSessionTask),
+            appLanguage
+        );
         _phaseLabel.ForeColor = phaseColor;
         _phaseLabel.BackColor = CreateTagBackground(phaseColor, themeMode);
         _focusButton.Text = snapshot.IsRunning
@@ -2432,6 +2601,32 @@ internal sealed class FloatingFocusForm : Form
         Invalidate(true);
         Update();
     }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        ApplyOwnedIcon();
+    }
+
+    private void ApplyOwnedIcon()
+    {
+        var nextIcon = AppIconProvider.CreateAppIcon();
+        if (nextIcon is null)
+        {
+            return;
+        }
+
+        var previousIcon = _ownedIcon;
+        _ownedIcon = nextIcon;
+        Icon = nextIcon;
+        previousIcon?.Dispose();
+    }
+
+    private void ReleaseOwnedIcon()
+    {
+        _ownedIcon?.Dispose();
+        _ownedIcon = null;
+    }
 }
 
 internal sealed class SettingsForm : Form
@@ -2440,12 +2635,17 @@ internal sealed class SettingsForm : Form
     private readonly NumericUpDown _shortBreakInput;
     private readonly NumericUpDown _longBreakInput;
     private readonly NumericUpDown _opacityPercentInput;
+    private readonly CheckBox _completionChimesEnabledInput;
+    private readonly NumericUpDown _completionChimeVolumeInput;
     private readonly ComboBox _languageInput;
+    private Icon? _ownedIcon;
 
     public int WorkMinutes => (int)_workInput.Value;
     public int ShortBreakMinutes => (int)_shortBreakInput.Value;
     public int LongBreakMinutes => (int)_longBreakInput.Value;
     public double FloatingWindowOpacity => (double)_opacityPercentInput.Value / 100D;
+    public bool CompletionChimesEnabled => _completionChimesEnabledInput.Checked;
+    public double CompletionChimeVolume => (double)_completionChimeVolumeInput.Value / 100D;
     public WindowsAppLanguage AppLanguage => _languageInput.SelectedIndex == 0
         ? WindowsAppLanguage.Chinese
         : WindowsAppLanguage.English;
@@ -2455,6 +2655,8 @@ internal sealed class SettingsForm : Form
         int shortBreakMinutes,
         int longBreakMinutes,
         double floatingWindowOpacity,
+        bool completionChimesEnabled,
+        double completionChimeVolume,
         WindowsAppLanguage appLanguage,
         WindowsThemeMode themeMode
     )
@@ -2462,13 +2664,13 @@ internal sealed class SettingsForm : Form
         string T(string key, params object[] args) => WindowsUiText.Get(key, appLanguage, args);
 
         Text = T("settings.title");
-        Icon = AppIconProvider.GetAppIcon();
+        ApplyOwnedIcon();
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MinimizeBox = false;
         MaximizeBox = false;
         ShowInTaskbar = false;
-        ClientSize = new Size(360, 338);
+        ClientSize = new Size(360, 410);
         BackColor = themeMode switch
         {
             WindowsThemeMode.BusinessMotion => Color.FromArgb(242, 247, 252),
@@ -2480,7 +2682,14 @@ internal sealed class SettingsForm : Form
         _shortBreakInput = CreateDurationInput(shortBreakMinutes, 1, 30);
         _longBreakInput = CreateDurationInput(longBreakMinutes, 1, 60);
         _opacityPercentInput = CreateOpacityPercentInput(floatingWindowOpacity);
+        _completionChimesEnabledInput = CreateCompletionChimesEnabledInput(T("settings.chime.enabled"), completionChimesEnabled);
+        _completionChimeVolumeInput = CreateCompletionChimeVolumeInput(completionChimeVolume);
         _languageInput = CreateLanguageInput(appLanguage, uiLanguage: appLanguage);
+        _completionChimesEnabledInput.CheckedChanged += (_, _) =>
+        {
+            _completionChimeVolumeInput.Enabled = _completionChimesEnabledInput.Checked;
+        };
+        _completionChimeVolumeInput.Enabled = _completionChimesEnabledInput.Checked;
 
         var card = new GlassCardPanel
         {
@@ -2493,11 +2702,13 @@ internal sealed class SettingsForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            RowCount = 6,
+            RowCount = 8,
             BackColor = Color.Transparent
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62F));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38F));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -2513,8 +2724,12 @@ internal sealed class SettingsForm : Form
         layout.Controls.Add(_longBreakInput, 1, 2);
         layout.Controls.Add(CreateSettingsLabel(T("settings.opacity")), 0, 3);
         layout.Controls.Add(_opacityPercentInput, 1, 3);
-        layout.Controls.Add(CreateSettingsLabel(T("settings.language")), 0, 4);
-        layout.Controls.Add(_languageInput, 1, 4);
+        layout.Controls.Add(_completionChimesEnabledInput, 0, 4);
+        layout.SetColumnSpan(_completionChimesEnabledInput, 2);
+        layout.Controls.Add(CreateSettingsLabel(T("settings.chime.volume")), 0, 5);
+        layout.Controls.Add(_completionChimeVolumeInput, 1, 5);
+        layout.Controls.Add(CreateSettingsLabel(T("settings.language")), 0, 6);
+        layout.Controls.Add(_languageInput, 1, 6);
 
         var doneButton = CreateDialogPrimaryButton(T("settings.done"), themeMode);
         doneButton.Width = 96;
@@ -2532,12 +2747,13 @@ internal sealed class SettingsForm : Form
         buttonRow.Controls.Add(doneButton);
         buttonRow.Controls.Add(resetButton);
 
-        layout.Controls.Add(buttonRow, 0, 5);
+        layout.Controls.Add(buttonRow, 0, 7);
         layout.SetColumnSpan(buttonRow, 2);
 
         card.Controls.Add(layout);
         Controls.Add(card);
         AcceptButton = doneButton;
+        FormClosed += (_, _) => ReleaseOwnedIcon();
     }
 
     private void ResetInputsToDefaults()
@@ -2548,6 +2764,11 @@ internal sealed class SettingsForm : Form
         _longBreakInput.Value = defaultState.LongBreakMinutes;
         _opacityPercentInput.Value = (decimal)Math.Round(
             defaultState.FloatingWindowOpacity * 100D,
+            MidpointRounding.AwayFromZero
+        );
+        _completionChimesEnabledInput.Checked = defaultState.CompletionChimesEnabled;
+        _completionChimeVolumeInput.Value = (decimal)Math.Round(
+            defaultState.CompletionChimeVolume * 100D,
             MidpointRounding.AwayFromZero
         );
         _languageInput.SelectedIndex = defaultState.AppLanguage == WindowsAppLanguage.Chinese ? 0 : 1;
@@ -2598,6 +2819,26 @@ internal sealed class SettingsForm : Form
         return button;
     }
 
+    private void ApplyOwnedIcon()
+    {
+        var nextIcon = AppIconProvider.CreateAppIcon();
+        if (nextIcon is null)
+        {
+            return;
+        }
+
+        var previousIcon = _ownedIcon;
+        _ownedIcon = nextIcon;
+        Icon = nextIcon;
+        previousIcon?.Dispose();
+    }
+
+    private void ReleaseOwnedIcon()
+    {
+        _ownedIcon?.Dispose();
+        _ownedIcon = null;
+    }
+
     private static void RoundControl(Control control, int radius)
     {
         _ = control;
@@ -2629,6 +2870,43 @@ internal sealed class SettingsForm : Form
         return new NumericUpDown
         {
             Minimum = 50,
+            Maximum = 100,
+            DecimalPlaces = 0,
+            Increment = 1,
+            Value = (decimal)Math.Round(normalized * 100D, MidpointRounding.AwayFromZero),
+            Width = 120,
+            Font = new Font("Segoe UI", 10F, FontStyle.Regular),
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 4, 0, 8)
+        };
+    }
+
+    private static CheckBox CreateCompletionChimesEnabledInput(string text, bool isEnabled)
+    {
+        return new CheckBox
+        {
+            Text = text,
+            Checked = isEnabled,
+            AutoSize = true,
+            Font = new Font("Segoe UI", 10F, FontStyle.Bold),
+            ForeColor = UiPalette.TextPrimary,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 8, 0, 6),
+            BackColor = Color.Transparent
+        };
+    }
+
+    private static NumericUpDown CreateCompletionChimeVolumeInput(double value)
+    {
+        var normalized = Math.Clamp(
+            value,
+            WindowsAppState.MinCompletionChimeVolume,
+            WindowsAppState.MaxCompletionChimeVolume
+        );
+
+        return new NumericUpDown
+        {
+            Minimum = 0,
             Maximum = 100,
             DecimalPlaces = 0,
             Increment = 1,

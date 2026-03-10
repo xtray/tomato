@@ -30,6 +30,9 @@ public sealed class WindowsAppState
     public const double DefaultFloatingWindowOpacity = 0.90D;
     public const double MinFloatingWindowOpacity = 0.50D;
     public const double MaxFloatingWindowOpacity = 1.00D;
+    public const double DefaultCompletionChimeVolume = 0.80D;
+    public const double MinCompletionChimeVolume = 0.00D;
+    public const double MaxCompletionChimeVolume = 1.00D;
 
     public WindowsThemeMode ThemeMode { get; init; } = WindowsThemeMode.WarmVivid;
     public int WorkMinutes { get; init; } = DefaultWorkMinutes;
@@ -38,6 +41,8 @@ public sealed class WindowsAppState
     public int FloatingWindowWidth { get; init; } = DefaultFloatingWindowWidth;
     public int FloatingWindowHeight { get; init; } = DefaultFloatingWindowHeight;
     public double FloatingWindowOpacity { get; init; } = DefaultFloatingWindowOpacity;
+    public bool CompletionChimesEnabled { get; init; } = true;
+    public double CompletionChimeVolume { get; init; } = DefaultCompletionChimeVolume;
     public WindowsAppLanguage AppLanguage { get; init; } = WindowsAppLanguage.English;
     public List<WindowsTaskState> Tasks { get; init; } = [];
 
@@ -64,6 +69,8 @@ public sealed class WindowsAppState
                 fallback: DefaultFloatingWindowHeight
             ),
             FloatingWindowOpacity = ClampOpacity(FloatingWindowOpacity),
+            CompletionChimesEnabled = CompletionChimesEnabled,
+            CompletionChimeVolume = ClampCompletionChimeVolume(CompletionChimeVolume),
             AppLanguage = Enum.IsDefined(AppLanguage) ? AppLanguage : WindowsAppLanguage.English,
             Tasks = (Tasks ?? [])
                 .Where(task => task is not null)
@@ -107,6 +114,16 @@ public sealed class WindowsAppState
         }
 
         return Math.Clamp(value, MinFloatingWindowOpacity, MaxFloatingWindowOpacity);
+    }
+
+    private static double ClampCompletionChimeVolume(double value)
+    {
+        if (double.IsNaN(value) || double.IsInfinity(value))
+        {
+            return DefaultCompletionChimeVolume;
+        }
+
+        return Math.Clamp(value, MinCompletionChimeVolume, MaxCompletionChimeVolume);
     }
 }
 

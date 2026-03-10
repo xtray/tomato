@@ -72,6 +72,10 @@ struct SettingsView: View {
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous))
 
                     opacitySetting(value: $taskStore.floatingWindowOpacity)
+                    completionChimeSetting(
+                        isEnabled: $taskStore.completionChimesEnabled,
+                        volume: $taskStore.completionChimeVolume
+                    )
 
                     durationSetting(
                         title: AppText.string("settings.duration.focus", language: language),
@@ -113,7 +117,7 @@ struct SettingsView: View {
             }
             .padding(AppTheme.Spacing.md)
         }
-        .frame(width: 440, height: 560)
+        .frame(width: 440, height: 660)
     }
 
     private func durationSetting(title: String, icon: String, value: Binding<Int>, range: ClosedRange<Int>, color: Color) -> some View {
@@ -174,6 +178,48 @@ struct SettingsView: View {
                     .foregroundStyle(AppTheme.Colors.textSecondary(for: mode))
                     .frame(width: 90, alignment: .trailing)
             }
+        }
+        .padding(.horizontal, AppTheme.Spacing.sm)
+        .padding(.vertical, AppTheme.Spacing.sm)
+        .background(AppTheme.Colors.textFieldFill(for: mode))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous)
+                .stroke(AppTheme.Colors.textFieldStroke(for: mode), lineWidth: 0.8)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous))
+    }
+
+    private func completionChimeSetting(isEnabled: Binding<Bool>, volume: Binding<Double>) -> some View {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.xs) {
+            Text(AppText.string("settings.chime", language: language))
+                .font(.system(size: 14, weight: .semibold))
+
+            Toggle(AppText.string("settings.chime.enabled", language: language), isOn: isEnabled)
+                .toggleStyle(.switch)
+                .tint(AppTheme.Colors.tomatoPrimary(for: mode))
+
+            HStack(spacing: AppTheme.Spacing.sm) {
+                Text(AppText.string("settings.chime.volume", language: language))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppTheme.Colors.textSecondary(for: mode))
+                    .frame(width: 96, alignment: .leading)
+
+                Slider(value: volume, in: 0...1, step: 0.01)
+                    .tint(AppTheme.Colors.tomatoPrimary(for: mode))
+                    .disabled(!isEnabled.wrappedValue)
+
+                Text(
+                    AppText.string(
+                        "settings.chime.volume.current",
+                        language: language,
+                        Int((volume.wrappedValue * 100).rounded())
+                    )
+                )
+                .font(.caption.weight(.medium))
+                .foregroundStyle(AppTheme.Colors.textSecondary(for: mode))
+                .frame(width: 90, alignment: .trailing)
+            }
+            .opacity(isEnabled.wrappedValue ? 1 : 0.55)
         }
         .padding(.horizontal, AppTheme.Spacing.sm)
         .padding(.vertical, AppTheme.Spacing.sm)

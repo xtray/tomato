@@ -11,6 +11,7 @@
 		13185F44064327C47008EDAE /* ThemeSemanticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F070D24B12077B4BEBE8BBB /* ThemeSemanticsTests.swift */; };
 		17AC7E48ED2F628268D15666 /* GlassComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6F8A7162523DC7C025C25B7 /* GlassComponents.swift */; };
 		188F499E2A3D29BF8CF9BF10 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C41FEF470A1073B52BBF148 /* ContentView.swift */; };
+		1FB0788999D5302A8D8FA45A /* CompletionChimePlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FB0788999D5302A8D8FA459 /* CompletionChimePlayer.swift */; };
 		21FC78AD9D0B994F8F194885 /* TimerProgressCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FA5288D02556641ABFB0F2 /* TimerProgressCalculator.swift */; };
 		3810C3EF43AA036AC8D96C1B /* Task.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11104527307BDE0FC4F69EC8 /* Task.swift */; };
 		3BDDA01A90AEDBE4600A71D6 /* AppTextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C89EA6DBFA39D5CFDF43FCB9 /* AppTextTests.swift */; };
@@ -39,6 +40,7 @@
 /* Begin PBXFileReference section */
 		00F1E7990AF5EBDCA129A974 /* ThemePreferencesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemePreferencesTests.swift; sourceTree = "<group>"; };
 		11104527307BDE0FC4F69EC8 /* Task.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Task.swift; sourceTree = "<group>"; };
+		1FB0788999D5302A8D8FA459 /* CompletionChimePlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionChimePlayer.swift; sourceTree = "<group>"; };
 		27C7022D1197550E5344D1CC /* TomatoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TomatoApp.swift; sourceTree = "<group>"; };
 		380FD6BE9BE9EC5591771303 /* AppLocalization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLocalization.swift; sourceTree = "<group>"; };
 		38FB82111E6B4D55CB8DE1D9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -76,6 +78,14 @@
 				380FD6BE9BE9EC5591771303 /* AppLocalization.swift */,
 			);
 			path = Localization;
+			sourceTree = "<group>";
+		};
+		3A9DA4B181E4F7E7A8C7A721 /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				1FB0788999D5302A8D8FA459 /* CompletionChimePlayer.swift */,
+			);
+			path = Audio;
 			sourceTree = "<group>";
 		};
 		347D2DFE15C781DAD6E0BDA8 /* Products */ = {
@@ -138,6 +148,7 @@
 			isa = PBXGroup;
 			children = (
 				27C7022D1197550E5344D1CC /* TomatoApp.swift */,
+				3A9DA4B181E4F7E7A8C7A721 /* Audio */,
 				3349A1AE1229FEC4512489E0 /* Localization */,
 				97D11E885168C02E9A3EAE67 /* Models */,
 				96A331BBEE1EC7510C5221F4 /* Resources */,
@@ -253,6 +264,7 @@
 			files = (
 				9139F19A06AC9D43591E31E1 /* AppLocalization.swift in Sources */,
 				AE5275D5B880A7FEB53D61D7 /* AppTheme.swift in Sources */,
+				1FB0788999D5302A8D8FA45A /* CompletionChimePlayer.swift in Sources */,
 				188F499E2A3D29BF8CF9BF10 /* ContentView.swift in Sources */,
 				4772B774A23460E8F52DC842 /* FloatingWindowManager.swift in Sources */,
 				17AC7E48ED2F628268D15666 /* GlassComponents.swift in Sources */,

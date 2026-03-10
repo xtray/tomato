@@ -25,6 +25,13 @@ public sealed class WindowsUiTextTests
     }
 
     [Fact]
+    public void Get_ReturnsPausedStatusTextPerLanguage()
+    {
+        Assert.Equal("Paused", WindowsUiText.Get("timer.status.paused", WindowsAppLanguage.English));
+        Assert.Equal("已暂停", WindowsUiText.Get("timer.status.paused", WindowsAppLanguage.Chinese));
+    }
+
+    [Fact]
     public void Get_UnknownKeyFallsBackToKey()
     {
         Assert.Equal("missing.key", WindowsUiText.Get("missing.key", WindowsAppLanguage.English));

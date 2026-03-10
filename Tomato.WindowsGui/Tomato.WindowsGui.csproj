@@ -14,5 +14,6 @@
 
   <ItemGroup>
     <ProjectReference Include="../Tomato.WindowsCore/Tomato.WindowsCore.csproj" />
+    <EmbeddedResource Include="Resources/tomato.ico" />
   </ItemGroup>
 </Project>

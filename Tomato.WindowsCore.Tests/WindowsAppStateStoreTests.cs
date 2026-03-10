@@ -23,6 +23,8 @@ public sealed class WindowsAppStateStoreTests
                 FloatingWindowWidth = 368,
                 FloatingWindowHeight = 452,
                 FloatingWindowOpacity = 0.82D,
+                CompletionChimesEnabled = false,
+                CompletionChimeVolume = 0.42D,
                 AppLanguage = WindowsAppLanguage.Chinese,
                 Tasks =
                 [
@@ -46,6 +48,8 @@ public sealed class WindowsAppStateStoreTests
             Assert.Equal(368, loaded.FloatingWindowWidth);
             Assert.Equal(452, loaded.FloatingWindowHeight);
             Assert.Equal(0.82D, loaded.FloatingWindowOpacity, precision: 3);
+            Assert.False(loaded.CompletionChimesEnabled);
+            Assert.Equal(0.42D, loaded.CompletionChimeVolume, precision: 3);
             Assert.Equal(WindowsAppLanguage.Chinese, loaded.AppLanguage);
             Assert.Single(loaded.Tasks);
             Assert.Equal(taskId, loaded.Tasks[0].Id);
@@ -75,6 +79,8 @@ public sealed class WindowsAppStateStoreTests
         Assert.Equal(WindowsAppState.DefaultFloatingWindowWidth, loaded.FloatingWindowWidth);
         Assert.Equal(WindowsAppState.DefaultFloatingWindowHeight, loaded.FloatingWindowHeight);
         Assert.Equal(WindowsAppState.DefaultFloatingWindowOpacity, loaded.FloatingWindowOpacity, precision: 3);
+        Assert.True(loaded.CompletionChimesEnabled);
+        Assert.Equal(WindowsAppState.DefaultCompletionChimeVolume, loaded.CompletionChimeVolume, precision: 3);
         Assert.Empty(loaded.Tasks);
     }
 
@@ -97,6 +103,8 @@ public sealed class WindowsAppStateStoreTests
             Assert.Equal(WindowsAppState.DefaultFloatingWindowWidth, loaded.FloatingWindowWidth);
             Assert.Equal(WindowsAppState.DefaultFloatingWindowHeight, loaded.FloatingWindowHeight);
             Assert.Equal(WindowsAppState.DefaultFloatingWindowOpacity, loaded.FloatingWindowOpacity, precision: 3);
+            Assert.True(loaded.CompletionChimesEnabled);
+            Assert.Equal(WindowsAppState.DefaultCompletionChimeVolume, loaded.CompletionChimeVolume, precision: 3);
             Assert.Empty(loaded.Tasks);
         }
         finally
@@ -174,6 +182,28 @@ public sealed class WindowsAppStateStoreTests
             var loaded = store.Load();
 
             Assert.Equal(WindowsAppState.MinFloatingWindowOpacity, loaded.FloatingWindowOpacity, precision: 3);
+        }
+        finally
+        {
+            CleanupTempPath(tempPath);
+        }
+    }
+
+    [Fact]
+    public void Load_NormalizesCompletionChimeVolumeIntoSupportedRange()
+    {
+        var tempPath = CreateTempFilePath();
+        try
+        {
+            var store = new WindowsAppStateStore(tempPath);
+            store.Save(new WindowsAppState
+            {
+                CompletionChimeVolume = 1.8D
+            });
+
+            var loaded = store.Load();
+
+            Assert.Equal(WindowsAppState.MaxCompletionChimeVolume, loaded.CompletionChimeVolume, precision: 3);
         }
         finally
         {

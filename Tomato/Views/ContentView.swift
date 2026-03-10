@@ -306,13 +306,16 @@ struct ContentView: View {
         )
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .onTapGesture {
-            selectedTaskID = task.id
-        }
-        .onTapGesture(count: 2) {
-            selectedTaskID = task.id
-            taskStore.startFocusSessionForDoubleClick(task)
-        }
+        .gesture(
+            TapGesture(count: 2)
+                .onEnded {
+                    selectedTaskID = task.id
+                    taskStore.startFocusSessionForDoubleClick(task)
+                }
+                .exclusively(before: TapGesture().onEnded {
+                    selectedTaskID = task.id
+                })
+        )
         .onDrag {
             draggedTaskID = task.id
             return NSItemProvider(object: task.id.uuidString as NSString)
@@ -340,7 +343,7 @@ struct ContentView: View {
     }
 
     var phaseText: String {
-        taskStore.currentPhase.displayName(language: language)
+        AppText.string(taskStore.timerStatusTextKey, language: language)
     }
 
     var primaryFocusActionTextKey: String {

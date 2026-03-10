@@ -137,6 +137,56 @@ final class TaskStoreThemeTests: XCTestCase {
         XCTAssertEqual(store.focusControlState, .focus)
     }
 
+    func test_timer_status_text_key_is_ready_when_idle() {
+        UserDefaults.standard.removeObject(forKey: "tasks")
+
+        let store = TaskStore()
+
+        XCTAssertEqual(store.timerStatusTextKey, "timer.phase.ready")
+    }
+
+    func test_timer_status_text_key_is_focusing_during_running_work_session() {
+        UserDefaults.standard.removeObject(forKey: "tasks")
+
+        let store = TaskStore()
+        store.addTask(title: "Task A")
+        store.selectTask(store.tasks[0])
+
+        store.startFocusSession()
+
+        XCTAssertEqual(store.timerStatusTextKey, "timer.phase.work")
+        store.stopTimer()
+    }
+
+    func test_timer_status_text_key_is_paused_for_resumable_work_session() {
+        UserDefaults.standard.removeObject(forKey: "tasks")
+
+        let store = TaskStore()
+        store.addTask(title: "Task A")
+        store.selectTask(store.tasks[0])
+
+        store.startFocusSession()
+        store.stopTimer()
+
+        XCTAssertEqual(store.timerStatusTextKey, "timer.status.paused")
+    }
+
+    func test_timer_status_text_key_uses_break_phase_keys() {
+        UserDefaults.standard.removeObject(forKey: "tasks")
+
+        let store = TaskStore()
+        store.addTask(title: "Task A")
+        store.selectTask(store.tasks[0])
+        store.startFocusSession()
+
+        store.currentPhase = .shortBreak
+        XCTAssertEqual(store.timerStatusTextKey, "timer.phase.short_break")
+
+        store.currentPhase = .longBreak
+        XCTAssertEqual(store.timerStatusTextKey, "timer.phase.long_break")
+        store.stopTimer()
+    }
+
     func test_deleting_active_session_task_resets_timer_to_initial_state() {
         UserDefaults.standard.removeObject(forKey: "tasks")
 
@@ -226,6 +276,56 @@ final class TaskStoreThemeTests: XCTestCase {
         store.stopTimer()
     }
 
+    func test_start_focus_for_same_task_when_session_is_running_and_floating_window_is_closed_reopens_floating_window() {
+        UserDefaults.standard.removeObject(forKey: "tasks")
+
+        let store = TaskStore()
+        store.addTask(title: "Task A")
+
+        let task = store.tasks[0]
+
+        store.selectTask(task)
+        store.startFocusSession()
+        let runningRemaining = store.remainingSeconds
+        store.closeFloatingWindow()
+
+        store.startFocusSessionForDoubleClick(task)
+
+        XCTAssertTrue(store.isTimerRunning)
+        XCTAssertEqual(store.sessionTaskID, task.id)
+        XCTAssertEqual(store.timerDisplayTask?.id, task.id)
+        XCTAssertEqual(store.remainingSeconds, runningRemaining)
+        XCTAssertTrue(store.showingFloatingWindow)
+        store.stopTimer()
+    }
+
+    func test_start_focus_for_same_task_after_reset_starts_new_session_and_shows_floating_window() {
+        UserDefaults.standard.removeObject(forKey: "tasks")
+
+        let store = TaskStore()
+        store.addTask(title: "Task A")
+
+        let task = store.tasks[0]
+
+        store.startFocusSessionForDoubleClick(task)
+        store.closeFloatingWindow()
+        store.resetTimer()
+
+        XCTAssertFalse(store.isTimerRunning)
+        XCTAssertNil(store.sessionTaskID)
+        XCTAssertFalse(store.showingFloatingWindow)
+
+        store.startFocusSessionForDoubleClick(task)
+
+        XCTAssertTrue(store.isTimerRunning)
+        XCTAssertEqual(store.sessionTaskID, task.id)
+        XCTAssertEqual(store.timerDisplayTask?.id, task.id)
+        XCTAssertEqual(store.currentPhase, .work)
+        XCTAssertEqual(store.remainingSeconds, store.workDuration)
+        XCTAssertTrue(store.showingFloatingWindow)
+        store.stopTimer()
+    }
+
     func test_task_store_restores_task_and_completed_pomodoro_count_from_persistence() throws {
         let taskID = UUID()
         let persistedTasks = [PomodoroTask(id: taskID, title: "Task A", completedPomodoros: 3, isCompleted: false)]
@@ -288,6 +388,67 @@ final class TaskStoreThemeTests: XCTestCase {
         XCTAssertEqual(store.workDuration, 25 * 60)
         XCTAssertEqual(store.shortBreakDuration, 5 * 60)
         XCTAssertEqual(store.longBreakDuration, 15 * 60)
+    }
+
+    func test_task_store_uses_default_completion_chime_settings() {
+        let store = TaskStore()
+
+        XCTAssertTrue(store.completionChimesEnabled)
+        XCTAssertEqual(store.completionChimeVolume, 0.8, accuracy: 0.0001)
+    }
+
+    func test_reset_settings_restores_completion_chime_defaults() {
+        let store = TaskStore()
+
+        store.completionChimesEnabled = false
+        store.completionChimeVolume = 0.35
+
+        store.resetSettings()
+
+        XCTAssertTrue(store.completionChimesEnabled)
+        XCTAssertEqual(store.completionChimeVolume, 0.8, accuracy: 0.0001)
+    }
+
+    func test_timer_completion_after_work_phase_triggers_work_completion_chime() {
+        UserDefaults.standard.removeObject(forKey: "tasks")
+
+        let store = TaskStore()
+        var playedEvents: [CompletionChimeEvent] = []
+        store.playCompletionChime = { event, _ in
+            playedEvents.append(event)
+        }
+
+        store.addTask(title: "Task A")
+        store.selectTask(store.tasks[0])
+        store.startFocusSession()
+        store.remainingSeconds = 0
+
+        store.timerCompletedForTesting()
+
+        XCTAssertEqual(playedEvents, [.workCompleted])
+        store.stopTimer()
+    }
+
+    func test_timer_completion_after_break_phase_triggers_break_completion_chime() {
+        UserDefaults.standard.removeObject(forKey: "tasks")
+
+        let store = TaskStore()
+        var playedEvents: [CompletionChimeEvent] = []
+        store.playCompletionChime = { event, _ in
+            playedEvents.append(event)
+        }
+
+        store.currentPhase = .shortBreak
+        store.remainingSeconds = 0
+        store.startFocusSession()
+        store.stopTimer()
+        store.currentPhase = .shortBreak
+        store.remainingSeconds = 0
+
+        store.timerCompletedForTesting()
+
+        XCTAssertEqual(playedEvents, [.breakCompleted])
+        XCTAssertFalse(store.isTimerRunning)
     }
 
     func test_move_task_before_task_moves_item_upward() {

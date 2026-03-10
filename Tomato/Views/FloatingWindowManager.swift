@@ -508,7 +508,7 @@ struct FloatingTimerContentView: View {
                 HStack {
                     GlassTag(
                         mode: mode,
-                        text: taskStore.currentPhase.displayName(language: language),
+                        text: AppText.string(taskStore.timerStatusTextKey, language: language),
                         tint: taskStore.currentPhase.themedColor(for: mode)
                     )
                     Spacer(minLength: 0)

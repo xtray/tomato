@@ -2,6 +2,52 @@ import Foundation
 import Combine
 import SwiftUI
 
+enum CompletionChimeEvent: Equatable {
+    case workCompleted
+    case breakCompleted
+}
+
+enum CompletionChimePreferences {
+    static let enabledKey = "completionChimesEnabled"
+    static let volumeKey = "completionChimeVolume"
+    static let defaultEnabled = true
+    static let defaultVolume = 0.8
+    static let minVolume = 0.0
+    static let maxVolume = 1.0
+
+    static func loadEnabled(from defaults: UserDefaults = .standard, key: String = enabledKey) -> Bool {
+        guard defaults.object(forKey: key) != nil else {
+            return defaultEnabled
+        }
+
+        return defaults.bool(forKey: key)
+    }
+
+    static func saveEnabled(_ value: Bool, to defaults: UserDefaults = .standard, key: String = enabledKey) {
+        defaults.set(value, forKey: key)
+    }
+
+    static func loadVolume(from defaults: UserDefaults = .standard, key: String = volumeKey) -> Double {
+        guard defaults.object(forKey: key) != nil else {
+            return defaultVolume
+        }
+
+        return normalized(defaults.double(forKey: key))
+    }
+
+    static func saveVolume(_ value: Double, to defaults: UserDefaults = .standard, key: String = volumeKey) {
+        defaults.set(normalized(value), forKey: key)
+    }
+
+    static func normalized(_ value: Double) -> Double {
+        guard value.isFinite else {
+            return defaultVolume
+        }
+
+        return min(max(value, minVolume), maxVolume)
+    }
+}
+
 enum TimerPhase: String, Codable {
     case work
     case shortBreak
@@ -67,6 +113,22 @@ class TaskStore: ObservableObject {
             FloatingWindowOpacityPreferences.save(normalized)
         }
     }
+    @Published var completionChimesEnabled: Bool {
+        didSet {
+            CompletionChimePreferences.saveEnabled(completionChimesEnabled)
+        }
+    }
+    @Published var completionChimeVolume: Double {
+        didSet {
+            let normalized = CompletionChimePreferences.normalized(completionChimeVolume)
+            if abs(normalized - completionChimeVolume) > 0.0001 {
+                completionChimeVolume = normalized
+                return
+            }
+
+            CompletionChimePreferences.saveVolume(normalized)
+        }
+    }
     
     @Published var workDuration: Int {
         didSet {
@@ -98,6 +160,7 @@ class TaskStore: ObservableObject {
     private var timer: Timer?
     private var completedWorkSessions: Int = 0
     private var sessionTaskSnapshot: PomodoroTask?
+    var playCompletionChime: ((CompletionChimeEvent, Double) -> Void)?
 
     var timerDisplayTask: PomodoroTask? {
         guard let sessionTaskID else {
@@ -122,6 +185,21 @@ class TaskStore: ObservableObject {
 
         return .focus
     }
+
+    var timerStatusTextKey: String {
+        switch currentPhase {
+        case .shortBreak:
+            return "timer.phase.short_break"
+        case .longBreak:
+            return "timer.phase.long_break"
+        case .work:
+            if isTimerRunning {
+                return "timer.phase.work"
+            }
+
+            return sessionTaskID != nil ? "timer.status.paused" : "timer.phase.ready"
+        }
+    }
     
     init() {
         let savedWorkDuration = UserDefaults.standard.integer(forKey: "workDuration")
@@ -130,10 +208,15 @@ class TaskStore: ObservableObject {
         self.appLanguage = LanguagePreferences.load()
         self.themeMode = ThemePreferences.load()
         self.floatingWindowOpacity = FloatingWindowOpacityPreferences.load()
+        self.completionChimesEnabled = CompletionChimePreferences.loadEnabled()
+        self.completionChimeVolume = CompletionChimePreferences.loadVolume()
         
         self.workDuration = savedWorkDuration > 0 ? savedWorkDuration : Self.defaultWorkDuration
         self.shortBreakDuration = savedShortBreakDuration > 0 ? savedShortBreakDuration : Self.defaultShortBreakDuration
         self.longBreakDuration = savedLongBreakDuration > 0 ? savedLongBreakDuration : Self.defaultLongBreakDuration
+        self.playCompletionChime = { event, volume in
+            CompletionChimePlayer.shared.play(event: event, volume: volume)
+        }
         
         self.remainingSeconds = workDuration
         loadTasks()
@@ -177,6 +260,11 @@ class TaskStore: ObservableObject {
 
     func startFocusSessionForDoubleClick(_ task: PomodoroTask) {
         selectedTask = task
+
+        if sessionTaskID == task.id {
+            showingFloatingWindow = true
+            return
+        }
 
         guard !isTimerRunning, sessionTaskID == nil else {
             return
@@ -223,6 +311,8 @@ class TaskStore: ObservableObject {
         themeMode = .glassVivid
         appLanguage = AppLanguage.fallback()
         floatingWindowOpacity = FloatingWindowOpacityPreferences.defaultValue
+        completionChimesEnabled = CompletionChimePreferences.defaultEnabled
+        completionChimeVolume = CompletionChimePreferences.defaultVolume
         workDuration = Self.defaultWorkDuration
         shortBreakDuration = Self.defaultShortBreakDuration
         longBreakDuration = Self.defaultLongBreakDuration
@@ -264,13 +354,27 @@ class TaskStore: ObservableObject {
                 currentPhase = .shortBreak
                 remainingSeconds = shortBreakDuration
             }
+            triggerCompletionChime(.workCompleted)
         } else {
             currentPhase = .work
             remainingSeconds = workDuration
             stopTimer()
             clearSessionTask()
             showingFloatingWindow = false
+            triggerCompletionChime(.breakCompleted)
         }
+    }
+
+    func timerCompletedForTesting() {
+        timerCompleted()
+    }
+
+    private func triggerCompletionChime(_ event: CompletionChimeEvent) {
+        guard completionChimesEnabled else {
+            return
+        }
+
+        playCompletionChime?(event, completionChimeVolume)
     }
 
     private func clearSessionTask() {
