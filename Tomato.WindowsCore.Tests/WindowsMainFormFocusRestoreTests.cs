@@ -16,6 +16,14 @@ public class WindowsMainFormFocusRestoreTests
             "_taskList.Focus();",
             methodBody
         );
+        Assert.Contains(
+            "Invalidate(true);",
+            methodBody
+        );
+        Assert.Contains(
+            "Update();",
+            methodBody
+        );
     }
 
     [Fact]
@@ -32,6 +40,66 @@ public class WindowsMainFormFocusRestoreTests
         );
         Assert.Contains(
             "ShowFloatingFocusWindow();",
+            methodBody
+        );
+    }
+
+    [Fact]
+    public void OnTaskListMouseDoubleClick_ResumesPausedSessionTaskThroughFocusHandler()
+    {
+        var projectRoot = FindProjectRoot();
+        var programPath = Path.Combine(projectRoot, "Tomato.WindowsGui", "Program.cs");
+        var source = File.ReadAllText(programPath);
+        var methodBody = ExtractMethodBody(source, "private void OnTaskListMouseDoubleClick(object? sender, MouseEventArgs e)");
+
+        Assert.Contains(
+            "WindowsTaskDoubleClickAction.ResumeFloatingFocus",
+            methodBody
+        );
+        Assert.Contains(
+            "StartOrResumeFocus();",
+            methodBody
+        );
+    }
+
+    [Fact]
+    public void BuildTimerCard_CentersRingInsideDedicatedLayoutHost()
+    {
+        var projectRoot = FindProjectRoot();
+        var programPath = Path.Combine(projectRoot, "Tomato.WindowsGui", "Program.cs");
+        var source = File.ReadAllText(programPath);
+        var methodBody = ExtractMethodBody(source, "private Control BuildTimerCard()");
+
+        Assert.Contains(
+            "var ringLayout = new TableLayoutPanel",
+            methodBody
+        );
+        Assert.Contains(
+            "layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));",
+            methodBody
+        );
+        Assert.Contains(
+            "var titleStack = new TableLayoutPanel",
+            methodBody
+        );
+        Assert.Contains(
+            "_taskTitleLabel.AutoEllipsis = true;",
+            methodBody
+        );
+        Assert.Contains(
+            "_taskTitleLabel.AutoSize = false;",
+            methodBody
+        );
+        Assert.Contains(
+            "ringLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));",
+            methodBody
+        );
+        Assert.Contains(
+            "ringLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));",
+            methodBody
+        );
+        Assert.Contains(
+            "ringLayout.Controls.Add(_ringControl, 1, 1);",
             methodBody
         );
     }

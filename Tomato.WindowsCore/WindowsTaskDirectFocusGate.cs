@@ -6,7 +6,8 @@ public enum WindowsTaskDoubleClickAction
     None = Ignore,
     StartDirectFocus,
     StartFocus = StartDirectFocus,
-    ReopenFloatingWindow
+    ReopenFloatingWindow,
+    ResumeFloatingFocus
 }
 
 public static class WindowsTaskDoubleClickActionResolver
@@ -58,7 +59,9 @@ public static class WindowsTaskDirectFocusGate
             clickedTaskIsSessionTask &&
             snapshot.Phase != PomodoroPhase.Idle)
         {
-            return WindowsTaskDoubleClickAction.ReopenFloatingWindow;
+            return snapshot.IsRunning
+                ? WindowsTaskDoubleClickAction.ReopenFloatingWindow
+                : WindowsTaskDoubleClickAction.ResumeFloatingFocus;
         }
 
         return WindowsTaskDoubleClickAction.Ignore;

@@ -60,9 +60,6 @@ internal sealed class MainForm : Form
 {
     private const int MainWindowCornerRadius = 24;
     private const int TaskContextMenuCornerRadius = 10;
-    private const int WmSysCommand = 0x0112;
-    private const int ScMinimize = 0xF020;
-    private const int ScRestore = 0xF120;
 
     private readonly PomodoroEngine _engine = new();
     private readonly WindowsAppStateStore _stateStore = new(WindowsAppStateStore.DefaultPath());
@@ -416,21 +413,35 @@ internal sealed class MainForm : Form
             BackColor = Color.Transparent,
             Padding = new Padding(20)
         };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        var titleStack = new FlowLayoutPanel
+        var titleLineHeight = (int)Math.Ceiling(_taskTitleLabel.Font.GetHeight()) + 8;
+        _taskTitleLabel.AutoEllipsis = true;
+        _taskTitleLabel.AutoSize = false;
+        _taskTitleLabel.Dock = DockStyle.Fill;
+        _taskTitleLabel.Height = titleLineHeight;
+        _taskTitleLabel.Margin = new Padding(0, 0, 0, 4);
+        _taskStatLabel.Margin = Padding.Empty;
+
+        var titleStack = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
             AutoSize = true,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-            BackColor = Color.Transparent
+            ColumnCount = 1,
+            RowCount = 2,
+            BackColor = Color.Transparent,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
         };
-        titleStack.Controls.Add(_taskTitleLabel);
-        titleStack.Controls.Add(_taskStatLabel);
+        titleStack.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        titleStack.RowStyles.Add(new RowStyle(SizeType.Absolute, titleLineHeight));
+        titleStack.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        titleStack.Controls.Add(_taskTitleLabel, 0, 0);
+        titleStack.Controls.Add(_taskStatLabel, 0, 1);
 
         var phaseRow = new FlowLayoutPanel
         {
@@ -446,7 +457,23 @@ internal sealed class MainForm : Form
             Padding = new Padding(0, 6, 0, 12),
             BackColor = Color.Transparent
         };
-        ringHost.Controls.Add(_ringControl);
+        var ringLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 3,
+            RowCount = 3,
+            BackColor = Color.Transparent,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+        ringLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+        ringLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        ringLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+        ringLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+        ringLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        ringLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+        ringLayout.Controls.Add(_ringControl, 1, 1);
+        ringHost.Controls.Add(ringLayout);
 
         var actionRow = new FlowLayoutPanel
         {
@@ -688,27 +715,6 @@ internal sealed class MainForm : Form
         ApplyOwnedIcon();
     }
 
-    protected override void WndProc(ref Message m)
-    {
-        if (m.Msg == WmSysCommand)
-        {
-            var command = (int)(m.WParam.ToInt64() & 0xFFF0);
-            if (command == ScMinimize)
-            {
-                MinimizeMainWindow();
-                return;
-            }
-
-            if (command == ScRestore)
-            {
-                RestoreMainWindow();
-                return;
-            }
-        }
-
-        base.WndProc(ref m);
-    }
-
     private void ApplyOwnedIcon()
     {
         var nextIcon = AppIconProvider.CreateAppIcon();
@@ -889,6 +895,12 @@ internal sealed class MainForm : Form
         {
             ShowFloatingFocusWindow();
             RefreshView();
+            return;
+        }
+
+        if (action == WindowsTaskDoubleClickAction.ResumeFloatingFocus)
+        {
+            StartOrResumeFocus();
             return;
         }
 
@@ -1271,6 +1283,10 @@ internal sealed class MainForm : Form
             _floatingForm.Hide();
         }
 
+        // Force a full repaint after returning from hidden state to avoid partial white frames.
+        Invalidate(true);
+        Update();
+
         BeginInvoke((Action)(() =>
         {
             if (IsDisposed)
@@ -1368,15 +1384,22 @@ internal sealed class MainForm : Form
             {
                 RestoreMainWindow();
             }
-            var owner = _floatingForm is { Visible: true } ? (IWin32Window)_floatingForm : this;
-            MessageBox.Show(
-                owner,
-                T("alert.session_completed.message"),
-                T("alert.session_completed.title"),
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information
-            );
-            BeginInvoke((Action)FocusTaskListIfPossible);
+            BeginInvoke((Action)(() =>
+            {
+                if (IsDisposed)
+                {
+                    return;
+                }
+
+                MessageBox.Show(
+                    this,
+                    T("alert.session_completed.message"),
+                    T("alert.session_completed.title"),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information
+                );
+                FocusTaskListIfPossible();
+            }));
         }
 
         RefreshView();

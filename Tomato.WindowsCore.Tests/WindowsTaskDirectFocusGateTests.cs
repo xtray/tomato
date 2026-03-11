@@ -46,7 +46,7 @@ public class WindowsTaskDirectFocusGateTests
     }
 
     [Fact]
-    public void ResolveDoubleClickAction_ReopensFloatingWindow_WhenPausedSessionMatchesClickedTask()
+    public void ResolveDoubleClickAction_ResumesFloatingFocus_WhenPausedSessionMatchesClickedTask()
     {
         var snapshot = new PomodoroSnapshot(
             PomodoroPhase.Work,
@@ -62,7 +62,7 @@ public class WindowsTaskDirectFocusGateTests
             clickedTaskIsSessionTask: true
         );
 
-        Assert.Equal(WindowsTaskDoubleClickAction.ReopenFloatingWindow, action);
+        Assert.Equal(WindowsTaskDoubleClickAction.ResumeFloatingFocus, action);
     }
 
     [Fact]

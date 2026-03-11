@@ -262,7 +262,12 @@ class TaskStore: ObservableObject {
         selectedTask = task
 
         if sessionTaskID == task.id {
-            showingFloatingWindow = true
+            if isTimerRunning {
+                showingFloatingWindow = true
+                return
+            }
+
+            startFocusSession()
             return
         }
 

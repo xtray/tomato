@@ -299,6 +299,31 @@ final class TaskStoreThemeTests: XCTestCase {
         store.stopTimer()
     }
 
+    func test_same_task_double_click_resumes_paused_session() {
+        UserDefaults.standard.removeObject(forKey: "tasks")
+
+        let store = TaskStore()
+        store.addTask(title: "Task A")
+
+        let task = store.tasks[0]
+
+        store.selectTask(task)
+        store.startFocusSession()
+        store.remainingSeconds = store.workDuration - 30
+        let pausedRemaining = store.remainingSeconds
+        store.stopTimer()
+        store.closeFloatingWindow()
+
+        store.startFocusSessionForDoubleClick(task)
+
+        XCTAssertTrue(store.isTimerRunning)
+        XCTAssertEqual(store.sessionTaskID, task.id)
+        XCTAssertEqual(store.timerDisplayTask?.id, task.id)
+        XCTAssertEqual(store.remainingSeconds, pausedRemaining)
+        XCTAssertTrue(store.showingFloatingWindow)
+        store.stopTimer()
+    }
+
     func test_start_focus_for_same_task_after_reset_starts_new_session_and_shows_floating_window() {
         UserDefaults.standard.removeObject(forKey: "tasks")
 
