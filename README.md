@@ -1,73 +1,86 @@
-# Tomato (macOS 番茄钟)
+# Tomato
 
-一个基于 SwiftUI 的 macOS 番茄钟应用，支持任务管理、悬浮倒计时窗口和任务番茄数统计。
+English | [简体中文](README-CN.md)
 
-## 功能概览
+Tomato is a desktop Pomodoro timer with task management, floating countdown windows, and local progress tracking. The project currently supports both macOS and Windows.
 
-1. 主界面可以新增/删除/排序任务，选择任务后开始番茄钟。
-2. 开始计时后会自动隐藏主窗口，并在桌面右上角显示悬浮番茄钟；点击悬浮窗口中的返回按钮可回到主界面。
-3. 每完成一个专注番茄钟（Work Session），会累计到对应任务的 `completedPomodoros`，并显示在任务下方。
+## Platform Support
 
-## 运行环境
+- macOS app built with SwiftUI
+- Windows app built with WinForms and a shared .NET timer core
+
+## Implemented Features
+
+- Task list management: add, delete, select, and reorder tasks
+- Task completion state: mark tasks as completed or incomplete
+- Pomodoro tracking per task with completed session counts
+- One-click focus start from the selected task
+- Double-click a task to start focus directly when no conflicting active session exists
+- Automatic Pomodoro cycle switching:
+  - Focus session: 25 minutes by default
+  - Short break: 5 minutes by default
+  - Long break: 15 minutes by default
+  - Long break after every 4 completed focus sessions
+- Floating countdown window during active sessions
+- Pause, resume, reset, and return-to-main-window controls
+- Adjustable session durations in settings
+- Adjustable floating window opacity
+- Completion chimes with enable/disable and volume controls
+- Theme switching with multiple built-in visual styles
+- Built-in Chinese and English interface support
+- Local persistence for tasks, timer settings, UI preferences, and progress data
+
+## Platform Notes
+
+### macOS
+
+- The main window automatically hides after focus starts and the floating timer appears near the top-right of the screen
+- The floating timer supports play/pause, reset, and return-to-main-window actions
+- The floating window can be resized from its resize hotspot
+- Data is stored locally with `UserDefaults`
+
+### Windows
+
+- The app ships as a standalone `win-x64` executable
+- The floating timer supports opacity and size persistence
+- Shared timer logic is covered by .NET test projects in `Tomato.WindowsCore.Tests`
+- Data is stored locally through the Windows app state store in the user profile
+
+## Build Requirements
+
+### macOS
 
 - macOS 13.0+
-- Xcode 15.0+（`project.yml` 中指定）
+- Xcode 15.0+
 - Swift 5.9
 
-## 安装与编译
+### Windows
 
-### 方式一：Xcode（推荐）
+- .NET SDK installed for local builds
 
-1. 打开工程：
+## Build And Run
+
+### Run on macOS with Xcode
+
 ```bash
 open Tomato.xcodeproj
 ```
-2. 选择 `Tomato` Scheme，目标设备选择 `My Mac`。
-3. 点击 Run（或按 `Cmd + R`）启动应用。
 
-### 方式二：命令行编译
+Choose the `Tomato` scheme, select `My Mac`, then run the app.
+
+### Build macOS from the command line
 
 ```bash
 xcodebuild -project Tomato.xcodeproj -scheme Tomato -configuration Release -derivedDataPath ./build/release build
 ```
 
-编译产物路径：
+Build output:
 
 `build/release/Build/Products/Release/Tomato.app`
 
-可直接运行：
+### Build Windows release executable
 
-```bash
-open build/release/Build/Products/Release/Tomato.app
-```
-
-## GitHub Tag 自动发布（macOS + Windows）
-
-推送 `v*` 格式的 tag（例如 `v1.2.0`）后，GitHub Actions 会自动触发发布流程：
-
-1. 在 macOS runner 编译并上传 `Tomato-<tag>-macOS.zip`
-2. 在 Windows runner 编译并上传 `Tomato-<tag>-windows-x64.exe`
-3. 自动创建（或更新）对应 tag 的 GitHub Release，并附带以上产物
-
-工作流文件：`.github/workflows/release-macos.yml`（同时负责 macOS + Windows）。
-也可以在 GitHub Actions 页面手动触发同一流程（`workflow_dispatch`）。
-
-示例命令：
-
-```bash
-git tag v1.2.0
-git push origin v1.2.0
-```
-
-Windows 可执行文件来自 `Tomato.WindowsGui`（WinForms 窗口版本），下载后可直接双击运行。
-
-如果你希望在 macOS 本地手动编译 Windows `exe`，先安装 .NET SDK：
-
-```bash
-brew install --cask dotnet-sdk
-```
-
-然后执行：
+Use this exact command:
 
 ```bash
 dotnet publish Tomato.WindowsGui/Tomato.WindowsGui.csproj \
@@ -83,51 +96,40 @@ dotnet publish Tomato.WindowsGui/Tomato.WindowsGui.csproj \
   /p:DebugSymbols=false
 ```
 
-默认产物：
+Build output:
 
 `build/windows-release/Tomato.WindowsGui.exe`
 
-## 使用文档
+## Release Workflow
 
-### 1. 创建并选择任务
+Pushing a tag in the `v*` format, such as `v1.2.0`, triggers the GitHub Actions release workflow.
 
-1. 在左侧任务列表底部输入框填写任务名。
-2. 回车或点击 `+` 按钮创建任务。
-3. 点击任务行选中该任务。
+The workflow:
 
-### 2. 开始番茄钟
+- Builds a macOS release archive
+- Builds a Windows standalone executable
+- Publishes both assets to the GitHub Release for that tag
 
-1. 选中任务后，点击右侧 `Focus` 按钮开始专注。
-2. 应用会自动切换为悬浮番茄钟（位于当前屏幕右上角）。
-3. 悬浮窗口支持：
-   - `播放/暂停`
-   - `重置`
-   - `返回主窗口`
-   - 仅可通过窗口左下角热区拖动缩放（无可视化拖拽标记）
+Workflow file:
 
-### 3. 番茄钟阶段规则
+`.github/workflows/release-macos.yml`
 
-- 专注时长：默认 25 分钟
-- 短休息：默认 5 分钟
-- 长休息：默认 15 分钟
-- 每完成 4 个专注番茄钟，进入一次长休息；其余为短休息。
+Example:
 
-### 4. 任务统计展示
+```bash
+git tag v1.2.0
+git push origin v1.2.0
+```
 
-- 每完成 1 次专注番茄钟，对应任务 `completedPomodoros +1`。
-- 统计会在任务行下方展示（如 `3X`），并配合番茄图标显示。
+## Data Persistence
 
-### 5. 参数设置
+Tomato currently stores data locally, including:
 
-点击左上角齿轮 `Settings` 可调整：
-
-- Focus Duration（1-60 分钟）
-- Short Break（1-30 分钟）
-- Long Break（1-60 分钟）
-
-## 数据存储说明
-
-应用使用 `UserDefaults` 本地保存：
-
-- 任务列表（含完成状态、番茄统计）
-- 番茄钟时长配置
+- Task list
+- Task completion state
+- Completed Pomodoro counts
+- Focus and break durations
+- Selected language
+- Selected theme
+- Floating window preferences
+- Completion chime preferences
